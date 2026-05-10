@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  school        String?
+  department    String?
+  researchField String?
+  role          UserRole @default(STUDENT)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  topics        Topic[]
+  replies       Reply[]
+  aiSessions    AIChatSession[]
+  aiDrafts      AIDraft[]
+}
+
+model Discipline {
+  id        String       @id @default(cuid())
+  name      String
+  slug      String       @unique
+  parentId  String?
+  parent    Discipline?  @relation("DisciplineTree", fields: [parentId], references: [id])
+  children  Discipline[] @relation("DisciplineTree")
+  sortOrder Int          @default(0)
+
+  tags      Tag[]
+  topics    Topic[]
+}
+
+model Tag {
+  id           String      @id @default(cuid())
+  name         String
+  slug         String      @unique
+  disciplineId String?
+  discipline   Discipline? @relation(fields: [disciplineId], references: [id])
+
+  topics       TopicTag[]
+}
+
+model Topic {
+  id                  String       @id @default(cuid())
+  title               String
+  type                TopicType
+  body                String
+  paperTitle          String?
+  paperUrl            String?
+  authorId            String
+  author              User         @relation(fields: [authorId], references: [id])
+  primaryDisciplineId String
+  primaryDiscipline   Discipline   @relation(fields: [primaryDisciplineId], references: [id])
+  status              TopicStatus  @default(PUBLISHED)
+  viewCount           Int          @default(0)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  lastActivityAt      DateTime     @default(now())
+
+  tags                TopicTag[]
+  replies             Reply[]
+  aiGuide             AIGuide?
+  aiSessions          AIChatSession[]
+  aiDrafts            AIDraft[]
+}
+
+model TopicTag {
+  topicId String
+  tagId   String
+
+  topic   Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  tag     Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, tagId])
+}
+
+model Reply {
+  id            String   @id @default(cuid())
+  topicId       String
+  topic         Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        User     @relation(fields: [authorId], references: [id])
+  body          String
+  parentReplyId String?
+  parentReply   Reply?   @relation("ReplyThread", fields: [parentReplyId], references: [id])
+  childReplies  Reply[]  @relation("ReplyThread")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model AIGuide {
+  id        String        @id @default(cuid())
+  topicId   String        @unique
+  topic     Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  content   String
+  model     String
+  status    AIJobStatus   @default(COMPLETED)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+model AIChatSession {
+  id        String          @id @default(cuid())
+  topicId   String
+  topic     Topic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User            @relation(fields: [userId], references: [id])
+  createdAt DateTime        @default(now())
+
+  messages  AIChatMessage[]
+}
+
+model AIChatMessage {
+  id        String        @id @default(cuid())
+  sessionId String
+  session   AIChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      AIMessageRole
+  content   String
+  createdAt DateTime      @default(now())
+}
+
+model AIDraft {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  topicId   String
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  input     String
+  output    String
+  createdAt DateTime @default(now())
+}
+
+enum UserRole {
+  STUDENT
+  MODERATOR
+  ADMIN
+}
+
+enum TopicType {
+  PAPER
+  QUESTION
+  IDEA
+  RECOMMENDATION
+}
+
+enum TopicStatus {
+  DRAFT
+  PUBLISHED
+  HIDDEN
+}
+
+enum AIJobStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum AIMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
