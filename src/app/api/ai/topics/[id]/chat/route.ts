@@ -19,8 +19,53 @@ export async function POST(request: Request, { params }: { params: RouteParams }
     return NextResponse.json({ message: "消息不能为空。" }, { status: 400 });
   }
 
+  const wantsStream = Boolean(body?.stream);
+
   try {
-    return NextResponse.json(await aiService.chat(id, message, mode, messages));
+    if (!wantsStream) {
+      return NextResponse.json(await aiService.chat(id, message, mode, messages));
+    }
+
+    const result = await aiService.streamChat(id, message, mode, messages);
+    const encoder = new TextEncoder();
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        function send(event: string, data: unknown) {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        }
+
+        try {
+          send("meta", {
+            mode: result.mode,
+            referencedReplyNumbers: result.referencedReplyNumbers,
+            warnings: result.warnings
+          });
+
+          for await (const delta of result.stream) {
+            if (delta) {
+              send("delta", { delta });
+            }
+          }
+
+          send("done", {});
+        } catch (error) {
+          send("error", { message: publicAIErrorMessage(error, "AI 回答失败。") });
+        } finally {
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive"
+      }
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "TOPIC_NOT_FOUND") {
       return NextResponse.json({ message: "Topic 不存在。" }, { status: 404 });

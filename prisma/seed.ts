@@ -94,6 +94,13 @@ const childDisciplines = [
     slug: "public-health",
     parentId: "medicine",
     sortOrder: 3
+  },
+  {
+    id: "translational-medicine",
+    name: "转化医学",
+    slug: "translational-medicine",
+    parentId: "medicine",
+    sortOrder: 4
   }
 ];
 
@@ -170,6 +177,20 @@ const tags = [
     slug: "dynamical-systems",
     disciplineId: "mathematics",
     disciplineIds: ["mathematics", "physics", "biology"]
+  },
+  {
+    id: "tag-cns-diseases",
+    name: "CNS疾病",
+    slug: "cns-diseases",
+    disciplineId: "translational-medicine",
+    disciplineIds: ["translational-medicine"]
+  },
+  {
+    id: "tag-glp-1",
+    name: "GLP-1",
+    slug: "glp-1",
+    disciplineId: "translational-medicine",
+    disciplineIds: ["translational-medicine"]
   }
 ];
 

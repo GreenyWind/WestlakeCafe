@@ -86,6 +86,92 @@ export function AITools({
     });
   }
 
+  async function postStream(
+    path: string,
+    body: unknown,
+    handlers: {
+      onMeta?: (data: unknown) => void;
+      onDelta: (delta: string) => void;
+    }
+  ) {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      throw new Error(data?.message ?? "AI 工具暂时不可用。");
+    }
+
+    if (!response.body) {
+      throw new Error("AI 工具暂时不可用。");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? "";
+
+      for (const eventText of events) {
+        handleStreamEvent(eventText, handlers);
+      }
+    }
+
+    buffer += decoder.decode();
+
+    if (buffer.trim()) {
+      handleStreamEvent(buffer, handlers);
+    }
+  }
+
+  function handleStreamEvent(
+    eventText: string,
+    handlers: {
+      onMeta?: (data: unknown) => void;
+      onDelta: (delta: string) => void;
+    }
+  ) {
+    const lines = eventText.split(/\r?\n/);
+    const event = lines
+      .find((line) => line.startsWith("event:"))
+      ?.slice("event:".length)
+      .trim();
+    const dataText = lines
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trim())
+      .join("\n");
+
+    if (!event || !dataText) {
+      return;
+    }
+
+    const data = JSON.parse(dataText);
+
+    if (event === "meta") {
+      handlers.onMeta?.(data);
+    }
+
+    if (event === "delta" && typeof data.delta === "string") {
+      handlers.onDelta(data.delta);
+    }
+
+    if (event === "error") {
+      throw new Error(data.message ?? "AI 工具暂时不可用。");
+    }
+  }
+
   function generateGuide(persist: boolean) {
     runAI("guide", async () => {
       setGuideStatus("PENDING");
@@ -116,22 +202,49 @@ export function AITools({
     const history = messages;
     const outbound = trimmed || "请根据前面的讨论生成可发布回复。";
     const userMessage = { role: "user" as const, content: outbound };
+    const assistantPlaceholder = { role: "assistant" as const, content: "" };
     setInput("");
-    setMessages([...history, userMessage]);
+    setMessages([...history, userMessage, assistantPlaceholder]);
     setChatWarnings([]);
 
     runAI("chat", async () => {
-      const data = await post(`/api/ai/topics/${topicId}/chat`, {
-        mode,
-        message: outbound,
-        messages: history
-      });
-      const assistantMessage = { role: "assistant" as const, content: data.message };
-      setMessages([...history, userMessage, assistantMessage]);
-      setChatWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      let assistantText = "";
+
+      try {
+        await postStream(
+          `/api/ai/topics/${topicId}/chat`,
+          {
+            mode,
+            message: outbound,
+            messages: history,
+            stream: true
+          },
+          {
+            onMeta(data) {
+              const value = data as { warnings?: unknown };
+              setChatWarnings(Array.isArray(value.warnings) ? value.warnings.map(String) : []);
+            },
+            onDelta(delta) {
+              assistantText += delta;
+              setMessages([...history, userMessage, { role: "assistant" as const, content: assistantText }]);
+            }
+          }
+        );
+      } catch (caught) {
+        if (!assistantText) {
+          setMessages([...history, userMessage]);
+        }
+
+        throw caught;
+      }
+
+      if (!assistantText.trim()) {
+        setMessages([...history, userMessage]);
+        throw new Error("AI 没有返回内容，请稍后再试。");
+      }
 
       if (mode === "draft") {
-        setLastDraft(data.message);
+        setLastDraft(assistantText);
       }
     });
   }
@@ -235,15 +348,11 @@ export function AITools({
               {messages.map((message, index) => (
                 <div className={`ai-message ${message.role}`} key={`${message.role}-${index}`}>
                   <span>{message.role === "user" ? "你" : "AI"}</span>
-                  <p className="body-text">{message.content}</p>
+                  <p className={`body-text ${message.content ? "" : "muted"}`}>
+                    {message.content || (pendingAction === "chat" ? pendingText[mode] : "AI 没有返回内容。")}
+                  </p>
                 </div>
               ))}
-              {pendingAction === "chat" ? (
-                <div className="ai-message assistant">
-                  <span>AI</span>
-                  <p className="body-text muted">{pendingText[mode]}</p>
-                </div>
-              ) : null}
             </div>
           ) : pendingAction === "chat" ? (
             <div className="ai-message assistant">

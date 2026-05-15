@@ -32,6 +32,17 @@ type ChatCompletionsResult = {
   }>;
 };
 
+type ChatCompletionsStreamChunk = {
+  choices?: Array<{
+    delta?: {
+      content?: string | Array<{ text?: string; type?: string }>;
+    };
+  }>;
+  error?: {
+    message?: string;
+  };
+};
+
 type ResponsesAPIResult = {
   output_text?: string;
   output?: Array<{
@@ -354,6 +365,25 @@ async function callModel(system: string, user: string, options?: { maxTokens?: n
   throw new Error(`UNSUPPORTED_AI_PROVIDER:${AI_PROVIDER}`);
 }
 
+async function* streamModel(system: string, user: string, options?: { maxTokens?: number; model?: string }) {
+  if (
+    AI_PROVIDER === "openai-chat-compatible" ||
+    AI_PROVIDER === "chat-completions" ||
+    AI_PROVIDER === "dashscope" ||
+    AI_PROVIDER === "deepseek" ||
+    AI_PROVIDER === "siliconflow"
+  ) {
+    yield* callChatCompletionsStream(system, user, { maxTokens: options?.maxTokens, model: options?.model });
+    return;
+  }
+
+  const output = await callModel(system, user, options);
+
+  for (const chunk of chunkText(output)) {
+    yield chunk;
+  }
+}
+
 function chatCompletionsEndpoint() {
   return `${CHAT_BASE_URL.replace(/\/+$/, "")}/chat/completions`;
 }
@@ -403,6 +433,130 @@ async function callChatCompletions(system: string, user: string, options?: { max
   return outputText;
 }
 
+async function* callChatCompletionsStream(
+  system: string,
+  user: string,
+  options?: { maxTokens?: number; model?: string }
+) {
+  if (!CHAT_API_KEY) {
+    throw new Error("AI_API_KEY_MISSING");
+  }
+
+  const requestBody: Record<string, unknown> = {
+    model: options?.model ?? CHAT_MODEL,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user }
+    ],
+    temperature: CHAT_TEMPERATURE,
+    stream: true
+  };
+
+  if (options?.maxTokens) {
+    requestBody.max_tokens = options.maxTokens;
+  }
+
+  const response = await fetch(chatCompletionsEndpoint(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${CHAT_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(requestBody),
+    signal: AbortSignal.timeout(AI_TIMEOUT_MS)
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`AI_CHAT_COMPLETIONS_ERROR:${response.status}:${truncate(text, 300)}`);
+  }
+
+  if (!response.body) {
+    throw new Error("AI_CHAT_COMPLETIONS_STREAM_UNAVAILABLE");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const chunk = parseChatCompletionsStreamLine(line);
+
+      if (chunk === "[DONE]") {
+        return;
+      }
+
+      if (chunk) {
+        yield chunk;
+      }
+    }
+  }
+
+  buffer += decoder.decode();
+
+  if (buffer.trim()) {
+    const chunk = parseChatCompletionsStreamLine(buffer);
+
+    if (chunk && chunk !== "[DONE]") {
+      yield chunk;
+    }
+  }
+}
+
+function parseChatCompletionsStreamLine(line: string) {
+  const trimmed = line.trim();
+
+  if (!trimmed || trimmed.startsWith(":")) {
+    return "";
+  }
+
+  const payload = trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed;
+
+  if (!payload) {
+    return "";
+  }
+
+  if (payload === "[DONE]") {
+    return "[DONE]" as const;
+  }
+
+  const data = JSON.parse(payload) as ChatCompletionsStreamChunk;
+
+  if (data.error?.message) {
+    throw new Error(`AI_CHAT_COMPLETIONS_STREAM_ERROR:${truncate(data.error.message, 300)}`);
+  }
+
+  return extractChatCompletionsDeltaText(data);
+}
+
+function extractChatCompletionsDeltaText(data: ChatCompletionsStreamChunk) {
+  const content = data.choices?.[0]?.delta?.content;
+
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => item.text)
+      .filter((value): value is string => Boolean(value))
+      .join("");
+  }
+
+  return "";
+}
+
 function extractChatCompletionsText(data: ChatCompletionsResult) {
   const content = data.choices?.[0]?.message?.content;
 
@@ -419,6 +573,16 @@ function extractChatCompletionsText(data: ChatCompletionsResult) {
   }
 
   return "";
+}
+
+function chunkText(value: string) {
+  const chunks: string[] = [];
+
+  for (let index = 0; index < value.length; index += 18) {
+    chunks.push(value.slice(index, index + 18));
+  }
+
+  return chunks;
 }
 
 function openAIResponsesEndpoint() {
@@ -795,6 +959,51 @@ export const aiService = {
       mode,
       referencedReplyNumbers,
       warnings
+    };
+  },
+
+  async streamChat(
+    topicId: string,
+    input: string,
+    mode: AIChatMode,
+    messages: AIConversationMessage[] = []
+  ) {
+    const topic = await repository.getTopicDetail(topicId, { incrementView: false });
+    if (!topic) {
+      throw new Error("TOPIC_NOT_FOUND");
+    }
+
+    const { prompt, referencedReplyNumbers, warnings } = chatPrompt(topic, input, messages, mode);
+
+    if (!isRealProvider()) {
+      const mock =
+        mode === "ask"
+          ? mockAnswer(topic, input).answer
+          : mockPolish(topic, input).polished;
+      return {
+        mode,
+        referencedReplyNumbers,
+        warnings,
+        stream: (async function* () {
+          for (const chunk of chunkText(mock)) {
+            yield chunk;
+          }
+        })()
+      };
+    }
+
+    const system =
+      mode === "ask" ? systemQuestionPrompt() : mode === "clarify" ? systemClarifyPrompt() : systemDraftPrompt();
+    const model = mode === "draft" ? CHAT_QUALITY_MODEL : CHAT_FAST_MODEL;
+
+    return {
+      mode,
+      referencedReplyNumbers,
+      warnings,
+      stream: streamModel(system, prompt, {
+        maxTokens: mode === "draft" ? 1400 : 1000,
+        model
+      })
     };
   },
 
