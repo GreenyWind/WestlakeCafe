@@ -2,12 +2,26 @@
 
 import { Send } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 export function ReplyForm({ topicId }: { topicId: string }) {
   const router = useRouter();
+  const [body, setBody] = useState("");
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    function handleAIDraft(event: Event) {
+      const detail = (event as CustomEvent<{ topicId: string; body: string }>).detail;
+
+      if (detail?.topicId === topicId && detail.body) {
+        setBody(detail.body);
+      }
+    }
+
+    window.addEventListener("ai-draft-ready", handleAIDraft);
+    return () => window.removeEventListener("ai-draft-ready", handleAIDraft);
+  }, [topicId]);
 
   return (
     <form
@@ -16,15 +30,13 @@ export function ReplyForm({ topicId }: { topicId: string }) {
         event.preventDefault();
         setError("");
 
-        const formElement = event.currentTarget;
-        const form = new FormData(formElement);
-        const body = String(form.get("body") ?? "");
+        const replyBody = body.trim();
 
         startTransition(async () => {
           const response = await fetch(`/api/topics/${topicId}/replies`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ body })
+            body: JSON.stringify({ body: replyBody })
           });
 
           if (!response.ok) {
@@ -33,7 +45,7 @@ export function ReplyForm({ topicId }: { topicId: string }) {
             return;
           }
 
-          formElement.reset();
+          setBody("");
           router.refresh();
         });
       }}
@@ -47,6 +59,8 @@ export function ReplyForm({ topicId }: { topicId: string }) {
           name="body"
           placeholder="可以先说明自己的背景，再提出一个具体问题或补充视角。"
           required
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
         />
       </div>
       <button className="button" disabled={pending} type="submit">

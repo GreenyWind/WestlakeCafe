@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import https from "node:https";
 import { repository } from "@/lib/repository";
-import type { AIQuestionResponse, AIPolishResponse, TopicDetail } from "@/lib/types";
+import type { AIConversationMessage, AIQuestionResponse, AIPolishResponse, TopicDetail } from "@/lib/types";
 import { truncate } from "@/lib/utils";
 
 type ChatMessage = {
@@ -13,6 +13,14 @@ type PoeChatCompletion = {
   choices?: Array<{
     message?: {
       content?: string;
+    };
+  }>;
+};
+
+type ChatCompletionsResult = {
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{ text?: string; type?: string }>;
     };
   }>;
 };
@@ -34,6 +42,12 @@ const POE_API_KEY = process.env.POE_API_KEY ?? "";
 const POE_MODEL = process.env.POE_MODEL ?? "Claude-Sonnet-4.6";
 const POE_BASE_URL = process.env.POE_BASE_URL ?? "https://api.poe.com/v1";
 const POE_TRANSPORT = process.env.POE_TRANSPORT ?? "https";
+
+const CHAT_API_KEY = process.env.AI_API_KEY ?? process.env.OPENAI_API_KEY ?? "";
+const CHAT_MODEL = process.env.AI_MODEL ?? process.env.OPENAI_MODEL ?? "qwen-plus";
+const CHAT_BASE_URL =
+  process.env.AI_BASE_URL ?? process.env.OPENAI_BASE_URL ?? "https://dashscope.aliyuncs.com/compatible-mode/v1";
+const CHAT_TEMPERATURE = Number(process.env.AI_TEMPERATURE ?? 0.4);
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-5.4";
@@ -63,14 +77,82 @@ function topicContext(topic: TopicDetail) {
     .join("\n");
 }
 
+function conversationContext(messages: AIConversationMessage[] = []) {
+  if (!messages.length) {
+    return "暂无历史对话";
+  }
+
+  return messages
+    .slice(-10)
+    .map((message, index) => {
+      const speaker = message.role === "user" ? "用户" : "助手";
+      return `${index + 1}. ${speaker}: ${truncate(message.content, 500)}`;
+    })
+    .join("\n");
+}
+
+function questionContext(topic: TopicDetail, messages: AIConversationMessage[], question: string) {
+  return [
+    "Topic 上下文如下：",
+    topicContext(topic),
+    "",
+    "本页已有对话历史如下：",
+    conversationContext(messages),
+    "",
+    `用户最新问题：${question}`,
+    "",
+    "请回答最新问题。要求：",
+    "1. 优先基于 topic 正文、论文信息、AI 导读和已有回复回答。",
+    "2. 如果使用通用背景知识，请明确说这是背景知识，不要说成帖子里已有的信息。",
+    "3. 面向外领域博士生，先解释关键概念，再给判断或讨论方向。",
+    "4. 结尾给出 2 个自然的继续追问方向。"
+  ].join("\n");
+}
+
+function draftingContext(topic: TopicDetail, messages: AIConversationMessage[], input: string, mode: "clarify" | "draft") {
+  const shared = [
+    "Topic 上下文如下：",
+    topicContext(topic),
+    "",
+    "用户与助手关于如何发言的已有讨论如下：",
+    conversationContext(messages),
+    "",
+    `用户最新补充：${input}`,
+    ""
+  ];
+
+  if (mode === "clarify") {
+    return [
+      ...shared,
+      "请先帮助用户澄清想法，而不是直接代写最终回复。要求：",
+      "1. 用 2-4 句总结你理解到的用户观点。",
+      "2. 指出还需要澄清的关键前提、概念或证据。",
+      "3. 提出 2-3 个具体追问，帮助用户把直觉变成可讨论的问题。",
+      "4. 不要编造论文中没有的信息。"
+    ].join("\n");
+  }
+
+  return [
+    ...shared,
+    "请根据 topic 和这段讨论，生成一段可以发布到讨论区的中文回复。要求：",
+    "1. 第一段说明自己的理解或问题，语气谦逊。",
+    "2. 第二段提出一个具体、可回应的观点/疑问/补充视角。",
+    "3. 如有必要，说明哪些地方仍不确定。",
+    "4. 不要夸大结论，不要编造证据，不要写成 AI 代笔口吻。",
+    "5. 输出末尾另起一行写「可再检查：」，列出 2-3 个发布前检查点。"
+  ].join("\n");
+}
+
 function mockGuide(topic: TopicDetail) {
   const tags = topic.tags.map((tag) => tag.name).join("、") || "暂无 tag";
 
   return [
-    `这个 topic 属于${topic.primaryDiscipline.name}，相关 tag 包括：${tags}。`,
-    `外领域读者可以先抓住讨论主线：${truncate(topic.body, 260)}`,
-    "建议从三个角度参与：它试图解决什么问题、使用了哪些关键概念、哪些假设可能需要其他领域的人来质疑。",
-    "当前 AI 导读为 mock 版本。配置 AI_PROVIDER 后可调用真实模型。"
+    `## 摘要`,
+    `这个 topic 属于${topic.primaryDiscipline.name}，相关 tag 包括：${tags}。讨论主线可以先概括为：${truncate(topic.body, 260)}`,
+    "## 外领域读者先看什么",
+    "先判断发帖人关心的是研究问题、方法、评价指标、机制解释，还是应用边界。",
+    "## 可以怎么参与",
+    "可以围绕关键概念、隐含假设、证据强度、跨领域类比这几个角度提出问题。"
   ].join("\n\n");
 }
 
@@ -103,42 +185,26 @@ function mockPolish(topic: TopicDetail, input: string): AIPolishResponse {
 
 function guidePrompt(topic: TopicDetail) {
   return [
-    "请为下面这个校内学术 topic 生成外领域读者可读的导读。",
-    "输出结构必须包含：",
-    "1. 这个 topic 在讨论什么",
-    "2. 为什么值得讨论",
-    "3. 外领域读者需要先知道的背景",
-    "4. 关键概念解释",
-    "5. 可以参与讨论的切入问题",
-    "6. 需要谨慎看待的假设或争议点",
+    "请为下面这个校内学术 topic 生成一份外领域博士生可读的摘要和讨论导读。",
+    "目标不是宣传这个 topic，而是降低跨领域参与门槛。",
+    "",
+    "请严格按下面结构输出：",
+    "## 一句话摘要",
+    "用 1-2 句话概括这个 topic 想讨论什么。",
+    "",
+    "## 讨论脉络",
+    "用 3-5 条短 bullet 说明：研究/问题背景、发帖人关心的核心点、已有回复里出现的方向。",
+    "",
+    "## 外领域读者需要补的背景",
+    "解释 3-5 个必要概念。不要假装读过论文全文，只能基于 topic 和通用背景知识。",
+    "",
+    "## 可能值得追问",
+    "给出 3-5 个可直接拿去参与讨论的问题。",
+    "",
+    "## 需要谨慎的地方",
+    "列出哪些判断依赖原文、数据或领域知识，目前仅凭帖子不能确定。",
     "",
     topicContext(topic)
-  ].join("\n");
-}
-
-function questionPrompt(topic: TopicDetail, question: string) {
-  return [
-    "Topic 上下文如下：",
-    topicContext(topic),
-    "",
-    `用户问题：${question}`,
-    "",
-    "请回答，并尽量帮助外领域博士生理解。回答末尾给出 2-3 个可以继续追问的问题。"
-  ].join("\n");
-}
-
-function polishPrompt(topic: TopicDetail, input: string) {
-  return [
-    "Topic 上下文如下：",
-    topicContext(topic),
-    "",
-    "用户的粗略想法如下：",
-    input,
-    "",
-    "请输出：",
-    "1. 一段可直接发到讨论区的回复草稿",
-    "2. 三条简短修改建议",
-    "回复草稿要保持谦逊、具体、可回应。"
   ].join("\n");
 }
 
@@ -157,7 +223,84 @@ async function callModel(system: string, user: string, options?: { maxTokens?: n
     return callOpenAIResponses(system, user, { maxTokens: options?.maxTokens });
   }
 
+  if (
+    AI_PROVIDER === "openai-chat-compatible" ||
+    AI_PROVIDER === "chat-completions" ||
+    AI_PROVIDER === "dashscope" ||
+    AI_PROVIDER === "deepseek" ||
+    AI_PROVIDER === "siliconflow"
+  ) {
+    return callChatCompletions(system, user, { maxTokens: options?.maxTokens });
+  }
+
   throw new Error(`UNSUPPORTED_AI_PROVIDER:${AI_PROVIDER}`);
+}
+
+function chatCompletionsEndpoint() {
+  return `${CHAT_BASE_URL.replace(/\/+$/, "")}/chat/completions`;
+}
+
+async function callChatCompletions(system: string, user: string, options?: { maxTokens?: number }) {
+  if (!CHAT_API_KEY) {
+    throw new Error("AI_API_KEY_MISSING");
+  }
+
+  const requestBody: Record<string, unknown> = {
+    model: CHAT_MODEL,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user }
+    ],
+    temperature: CHAT_TEMPERATURE,
+    stream: false
+  };
+
+  if (options?.maxTokens) {
+    requestBody.max_tokens = options.maxTokens;
+  }
+
+  const response = await fetch(chatCompletionsEndpoint(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${CHAT_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(requestBody),
+    signal: AbortSignal.timeout(AI_TIMEOUT_MS)
+  });
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`AI_CHAT_COMPLETIONS_ERROR:${response.status}:${truncate(text, 300)}`);
+  }
+
+  const data = JSON.parse(text) as ChatCompletionsResult;
+  const outputText = extractChatCompletionsText(data);
+
+  if (!outputText) {
+    throw new Error(`AI_CHAT_COMPLETIONS_EMPTY_RESPONSE:${truncate(text, 300)}`);
+  }
+
+  return outputText;
+}
+
+function extractChatCompletionsText(data: ChatCompletionsResult) {
+  const content = data.choices?.[0]?.message?.content;
+
+  if (typeof content === "string") {
+    return content.trim();
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => item.text)
+      .filter((value): value is string => Boolean(value))
+      .join("\n")
+      .trim();
+  }
+
+  return "";
 }
 
 function openAIResponsesEndpoint() {
@@ -396,19 +539,28 @@ try {
 }
 
 function systemGuidePrompt() {
-  return "你是一个帮助博士生跨领域阅读和讨论论文/问题的学术导读助手。请用中文回答，准确、克制，不编造来源。不要自称 AI。";
+  return "你是一个帮助博士生跨领域阅读和讨论论文/问题的学术摘要助手。请用中文回答，准确、克制、结构清晰。只基于给定 topic 和明确标注的通用背景知识回答；不要编造论文细节，不要自称 AI。";
 }
 
 function systemQuestionPrompt() {
-  return "你是一个常驻 topic 页面的学术问答助手。请主要基于用户提供的 topic 上下文回答；如果需要补充通用背景，请明确说明这是背景知识而不是帖子中出现的信息。用中文回答。";
+  return "你是一个常驻 topic 页面的学术问答助手。请跟随用户连续提问，主要基于 topic 上下文回答；如果需要补充通用背景，请明确说明这是背景知识而不是帖子中出现的信息。用中文回答，避免空泛鼓励。";
 }
 
 function systemPolishPrompt() {
-  return "你是一个帮助博士生把模糊直觉整理成清晰、礼貌、可讨论发言的写作助手。不要替用户夸大结论，不要编造证据。用中文回答。";
+  return "你是一个帮助博士生把模糊直觉澄清成清晰、礼貌、可讨论发言的学术写作伙伴。先追问和澄清，再在用户需要时形成回复草稿。不要替用户夸大结论，不要编造证据。用中文回答。";
 }
 
 function isRealProvider() {
-  return AI_PROVIDER === "poe" || AI_PROVIDER === "openai" || AI_PROVIDER === "openai-responses";
+  return (
+    AI_PROVIDER === "poe" ||
+    AI_PROVIDER === "openai" ||
+    AI_PROVIDER === "openai-responses" ||
+    AI_PROVIDER === "openai-chat-compatible" ||
+    AI_PROVIDER === "chat-completions" ||
+    AI_PROVIDER === "dashscope" ||
+    AI_PROVIDER === "deepseek" ||
+    AI_PROVIDER === "siliconflow"
+  );
 }
 
 function modelLabel() {
@@ -418,6 +570,16 @@ function modelLabel() {
 
   if (AI_PROVIDER === "openai" || AI_PROVIDER === "openai-responses") {
     return `openai-responses:${OPENAI_MODEL}`;
+  }
+
+  if (
+    AI_PROVIDER === "openai-chat-compatible" ||
+    AI_PROVIDER === "chat-completions" ||
+    AI_PROVIDER === "dashscope" ||
+    AI_PROVIDER === "deepseek" ||
+    AI_PROVIDER === "siliconflow"
+  ) {
+    return `chat-completions:${CHAT_MODEL}`;
   }
 
   return "mock-guide-v1";
@@ -437,7 +599,11 @@ export const aiService = {
     return repository.upsertAIGuide(topicId, content, modelLabel());
   },
 
-  async answerQuestion(topicId: string, question: string): Promise<AIQuestionResponse> {
+  async answerQuestion(
+    topicId: string,
+    question: string,
+    messages: AIConversationMessage[] = []
+  ): Promise<AIQuestionResponse> {
     const topic = await repository.getTopicDetail(topicId);
     if (!topic) {
       throw new Error("TOPIC_NOT_FOUND");
@@ -448,14 +614,19 @@ export const aiService = {
     }
 
     return {
-      answer: await callModel(systemQuestionPrompt(), questionPrompt(topic, question), {
+      answer: await callModel(systemQuestionPrompt(), questionContext(topic, messages, question), {
         maxTokens: 1400
       }),
       citations: ["topic.body", "topic.aiGuide", "topic.visibleReplies"]
     };
   },
 
-  async polishReply(topicId: string, input: string): Promise<AIPolishResponse> {
+  async polishReply(
+    topicId: string,
+    input: string,
+    messages: AIConversationMessage[] = [],
+    mode: "clarify" | "draft" = "clarify"
+  ): Promise<AIPolishResponse> {
     const topic = await repository.getTopicDetail(topicId);
     if (!topic) {
       throw new Error("TOPIC_NOT_FOUND");
@@ -466,14 +637,21 @@ export const aiService = {
     }
 
     return {
-      polished: await callModel(systemPolishPrompt(), polishPrompt(topic, input), {
-        maxTokens: 1200
+      polished: await callModel(systemPolishPrompt(), draftingContext(topic, messages, input, mode), {
+        maxTokens: mode === "draft" ? 1400 : 1000
       }),
-      suggestions: [
-        "检查是否准确表达了你的不确定性。",
-        "必要时补一句自己的学科背景。",
-        "发布前删掉不想公开的个人化表述。"
-      ]
+      suggestions:
+        mode === "draft"
+          ? [
+              "检查是否准确表达了你的不确定性。",
+              "必要时补一句自己的学科背景。",
+              "发布前删掉不想公开的个人化表述。"
+            ]
+          : [
+              "先补充你最想表达的判断或疑问。",
+              "说明你不确定的点，方便 AI 帮你收束。",
+              "澄清后再生成正式回复草稿。"
+            ]
     };
   }
 };

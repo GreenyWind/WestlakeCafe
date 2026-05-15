@@ -106,6 +106,11 @@ export type AIQuestionResponse = {
   citations: string[];
 };
 
+export type AIConversationMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export type AIPolishResponse = {
   polished: string;
   suggestions: string[];

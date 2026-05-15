@@ -404,6 +404,10 @@ select:focus {
   line-height: 1.6;
 }
 
+.textarea.compact {
+  min-height: 96px;
+}
+
 .layout-2 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
@@ -420,6 +424,52 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.button-row .button {
+  flex: 1 1 140px;
+}
+
+.ai-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.ai-message {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.ai-message > span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.ai-message p {
+  margin-bottom: 0;
+}
+
+.ai-message.user {
+  background: var(--surface-soft);
+}
+
+.ai-message.assistant {
+  border-color: #cbded7;
+  background: #f8fcfa;
 }
 
 .topic-detail-header {

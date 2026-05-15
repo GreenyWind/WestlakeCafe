@@ -11,6 +11,10 @@ export function publicAIErrorMessage(error: unknown, fallback: string) {
     return "OpenAI-compatible API key 未配置，请先在 .env 中填写 OPENAI_API_KEY。";
   }
 
+  if (error.message === "AI_API_KEY_MISSING") {
+    return "AI API key 未配置，请先在 .env 中填写 AI_API_KEY。";
+  }
+
   if (process.env.NODE_ENV === "development") {
     return `${fallback}（开发调试：${error.message}）`;
   }
