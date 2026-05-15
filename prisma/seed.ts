@@ -134,7 +134,7 @@ const tags = [
     name: "机器学习",
     slug: "machine-learning",
     disciplineId: "computer-science",
-    disciplineIds: ["computer-science", "mathematics", "clinical-medicine", "neuroscience", "materials"]
+    disciplineIds: ["computer-science", "mathematics"]
   },
   {
     id: "tag-materials-screening",
@@ -182,6 +182,7 @@ const topics = [
       "最近在想，很多博士生愿意了解别的方向，但卡在第一步：不知道背景、概念和核心争议。AI 如果能在 topic 顶部提供外行可读导读，是否能让更多人敢于参与讨论？想听听不同学科的体验。",
     authorId: "user-demo",
     primaryDisciplineId: "computer-science",
+    disciplineIds: ["computer-science"],
     tagIds: ["tag-human-ai", "tag-ml"],
     viewCount: 128,
     aiGuide:
@@ -197,6 +198,7 @@ const topics = [
     paperUrl: "https://example.edu/papers/efficient-coding",
     authorId: "user-bio",
     primaryDisciplineId: "neuroscience",
+    disciplineIds: ["neuroscience", "computer-science"],
     tagIds: ["tag-neural-coding", "tag-ml"],
     viewCount: 94,
     aiGuide:
@@ -212,6 +214,7 @@ const topics = [
     paperUrl: "https://example.edu/papers/external-validation",
     authorId: "user-med",
     primaryDisciplineId: "clinical-medicine",
+    disciplineIds: ["clinical-medicine", "public-health", "computer-science"],
     tagIds: ["tag-medical-imaging", "tag-bio-statistics", "tag-ml"],
     viewCount: 177,
     aiGuide:
@@ -225,6 +228,7 @@ const topics = [
       "材料筛选实验成本很高，看到有人用 active learning 选择下一批实验样本。想请教做机器学习和材料的同学：这种方法在哪些场景下真的有效，什么时候只是把不确定性包装得很好看？",
     authorId: "user-demo",
     primaryDisciplineId: "materials",
+    disciplineIds: ["materials", "computer-science"],
     tagIds: ["tag-materials-screening", "tag-ml"],
     viewCount: 76
   },
@@ -236,6 +240,7 @@ const topics = [
       "很多文章用 attractor landscape 描述细胞状态转换。这个比喻很有启发，但我不确定它在实验可验证层面能给出多少东西。想邀请数学、生物和物理方向的同学一起拆一下。",
     authorId: "user-bio",
     primaryDisciplineId: "biology",
+    disciplineIds: ["biology", "mathematics"],
     tagIds: ["tag-dynamical-systems", "tag-bio-statistics"],
     viewCount: 112
   }
@@ -354,6 +359,10 @@ async function main() {
         tags: {
           deleteMany: {},
           create: topic.tagIds.map((tagId) => ({ tagId }))
+        },
+        disciplines: {
+          deleteMany: {},
+          create: topic.disciplineIds.map((disciplineId) => ({ disciplineId }))
         }
       },
       create: {
@@ -368,6 +377,9 @@ async function main() {
         viewCount: topic.viewCount,
         tags: {
           create: topic.tagIds.map((tagId) => ({ tagId }))
+        },
+        disciplines: {
+          create: topic.disciplineIds.map((disciplineId) => ({ disciplineId }))
         }
       }
     });

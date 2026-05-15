@@ -35,9 +35,12 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
           <header className="topic-detail-header">
             <div className="topic-meta">
               <span className="type-badge">{typeText[topic.type]}</span>
-              <Link href={`/disciplines/${topic.primaryDiscipline.slug}`}>
-                {topic.primaryDiscipline.name}
-              </Link>
+              {topic.disciplines.map((discipline) => (
+                <Link href={`/disciplines/${discipline.slug}`} key={discipline.id}>
+                  {discipline.name}
+                  {discipline.reviewStatus === "PENDING" ? "（未分类）" : ""}
+                </Link>
+              ))}
               <span>{formatDate(topic.createdAt)}</span>
               <span>{topic.viewCount} 次浏览</span>
             </div>
@@ -51,6 +54,7 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
               {topic.tags.map((tag) => (
                 <Link className="tag" href={`/topics?tag=${tag.slug}`} key={tag.id}>
                   {tag.name}
+                  {tag.reviewStatus === "PENDING" ? <span>未审核</span> : null}
                 </Link>
               ))}
             </div>

@@ -6,6 +6,7 @@ import type {
   Reply as PrismaReply,
   TagDiscipline as PrismaTagDiscipline,
   Tag as PrismaTag,
+  TopicDiscipline as PrismaTopicDiscipline,
   Topic as PrismaTopic,
   User as PrismaUser
 } from "@prisma/client";
@@ -16,6 +17,8 @@ import type {
   CreateReplyInput,
   CreateTopicInput,
   Discipline,
+  NewDisciplineInput,
+  NewTagInput,
   PublicUser,
   Reply,
   Tag,
@@ -37,6 +40,7 @@ type TopicWithRelations = PrismaTopic & {
   author: PrismaUser;
   primaryDiscipline: PrismaDiscipline;
   tags: Array<{ tag: PrismaTag & { disciplines?: Array<Pick<PrismaTagDiscipline, "disciplineId">> } }>;
+  disciplines: Array<PrismaTopicDiscipline & { discipline: PrismaDiscipline }>;
   aiGuide: PrismaAIGuide | null;
   _count: { replies: number };
 };
@@ -72,7 +76,10 @@ function toDiscipline(discipline: PrismaDiscipline): Discipline {
   return {
     ...discipline,
     parentId: discipline.parentId,
-    sortOrder: discipline.sortOrder
+    sortOrder: discipline.sortOrder,
+    createdById: discipline.createdById,
+    createdAt: toDateString(discipline.createdAt),
+    updatedAt: toDateString(discipline.updatedAt)
   };
 }
 
@@ -80,7 +87,11 @@ function toTag(tag: PrismaTag & { disciplines?: Array<Pick<PrismaTagDiscipline, 
   return {
     ...tag,
     disciplineId: tag.disciplineId,
-    disciplineIds: tag.disciplines?.map((item) => item.disciplineId) ?? (tag.disciplineId ? [tag.disciplineId] : [])
+    disciplineIds: tag.disciplines?.map((item) => item.disciplineId) ?? (tag.disciplineId ? [tag.disciplineId] : []),
+    reviewReason: tag.reviewReason,
+    createdById: tag.createdById,
+    createdAt: toDateString(tag.createdAt),
+    updatedAt: toDateString(tag.updatedAt)
   };
 }
 
@@ -96,7 +107,12 @@ function toAIGuide(guide: PrismaAIGuide | null): AIGuide | undefined {
   };
 }
 
-function toTopicBase(topic: PrismaTopic & { tags?: Array<{ tag: PrismaTag }> }): Topic {
+function toTopicBase(
+  topic: PrismaTopic & {
+    tags?: Array<{ tag: PrismaTag }>;
+    disciplines?: Array<Pick<PrismaTopicDiscipline, "disciplineId">>;
+  }
+): Topic {
   return {
     id: topic.id,
     title: topic.title,
@@ -107,6 +123,7 @@ function toTopicBase(topic: PrismaTopic & { tags?: Array<{ tag: PrismaTag }> }):
     authorId: topic.authorId,
     primaryDisciplineId: topic.primaryDisciplineId,
     status: topic.status,
+    disciplineIds: topic.disciplines?.map((item) => item.disciplineId) ?? [topic.primaryDisciplineId],
     tagIds: topic.tags?.map((item) => item.tag.id) ?? [],
     viewCount: topic.viewCount,
     createdAt: toDateString(topic.createdAt),
@@ -119,11 +136,16 @@ function toTopicListItem(topic: TopicWithRelations): TopicListItem {
   const guideUpdatedAt = topic.aiGuide?.updatedAt;
   const isGuideOlderThanAWeek =
     guideUpdatedAt && Date.now() - guideUpdatedAt.getTime() > 7 * 24 * 60 * 60 * 1000;
+  const topicDisciplines =
+    topic.disciplines.length > 0
+      ? topic.disciplines.map((item) => toDiscipline(item.discipline))
+      : [toDiscipline(topic.primaryDiscipline)];
 
   return {
     ...toTopicBase(topic),
     author: toPublicUser(topic.author),
     primaryDiscipline: toDiscipline(topic.primaryDiscipline),
+    disciplines: topicDisciplines,
     tags: topic.tags.map((item) => toTag(item.tag)),
     replyCount: topic._count.replies,
     aiGuide: toAIGuide(topic.aiGuide),
@@ -158,6 +180,16 @@ function includeTopicRelations() {
           include: {
             disciplines: true
           }
+        }
+      }
+    },
+    disciplines: {
+      include: {
+        discipline: true
+      },
+      orderBy: {
+        discipline: {
+          sortOrder: "asc"
         }
       }
     },
@@ -204,6 +236,29 @@ async function uniqueTagSlug(name: string) {
   }
 
   return candidate;
+}
+
+async function uniqueDisciplineSlug(name: string, parentId?: string | null) {
+  const parent = parentId
+    ? await prisma.discipline.findUnique({
+        where: { id: parentId },
+        select: { slug: true }
+      })
+    : null;
+  const base = slugify(parent ? `${parent.slug}-${name}` : name) || `discipline-${Date.now()}`;
+  let candidate = base;
+  let counter = 2;
+
+  while (await prisma.discipline.findUnique({ where: { slug: candidate } })) {
+    candidate = `${base}-${counter}`;
+    counter += 1;
+  }
+
+  return candidate;
+}
+
+function uniqueIds(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
 export const repository = {
@@ -257,12 +312,16 @@ export const repository = {
     return toPublicUser(user);
   },
 
-  async listDisciplines(): Promise<Array<Discipline & { children: Discipline[] }>> {
+  async listDisciplines(options: { includePending?: boolean } = {}): Promise<Array<Discipline & { children: Discipline[] }>> {
     const roots = await prisma.discipline.findMany({
-      where: { parentId: null },
+      where: {
+        parentId: null,
+        ...(options.includePending ? {} : { reviewStatus: "APPROVED" })
+      },
       orderBy: { sortOrder: "asc" },
       include: {
         children: {
+          where: options.includePending ? undefined : { reviewStatus: "APPROVED" },
           orderBy: { sortOrder: "asc" }
         }
       }
@@ -279,8 +338,15 @@ export const repository = {
     return discipline ? toDiscipline(discipline) : null;
   },
 
-  async listTags(): Promise<Tag[]> {
+  async listTags(options: { includePending?: boolean; userId?: string } = {}): Promise<Tag[]> {
     const tags = await prisma.tag.findMany({
+      where: options.includePending
+        ? options.userId
+          ? {
+              OR: [{ reviewStatus: "APPROVED" }, { createdById: options.userId }]
+            }
+          : undefined
+        : { reviewStatus: "APPROVED" },
       orderBy: { name: "asc" },
       include: {
         disciplines: true
@@ -290,9 +356,7 @@ export const repository = {
   },
 
   async listTopics(query: TopicQuery = {}): Promise<TopicListItem[]> {
-    const where: Prisma.TopicWhereInput = {
-      status: "PUBLISHED"
-    };
+    const and: Prisma.TopicWhereInput[] = [{ status: "PUBLISHED" }];
 
     if (query.disciplineSlug) {
       const discipline = await prisma.discipline.findUnique({
@@ -303,58 +367,51 @@ export const repository = {
         return [];
       }
 
-      where.primaryDisciplineId = {
-        in: await getDescendantDisciplineIds(discipline.id)
-      };
+      const disciplineIds = await getDescendantDisciplineIds(discipline.id);
 
-      where.OR = [
-        { primaryDisciplineId: where.primaryDisciplineId },
-        {
-          tags: {
-            some: {
-              tag: {
-                OR: [
-                  {
-                    disciplineId: {
-                      in: await getDescendantDisciplineIds(discipline.id)
-                    }
-                  },
-                  {
-                    disciplines: {
-                      some: {
-                        disciplineId: {
-                          in: await getDescendantDisciplineIds(discipline.id)
-                        }
-                      }
-                    }
-                  }
-                ]
+      and.push({
+        OR: [
+          {
+            disciplines: {
+              some: {
+                disciplineId: {
+                  in: disciplineIds
+                }
               }
             }
+          },
+          {
+            primaryDisciplineId: {
+              in: disciplineIds
+            }
           }
-        }
-      ];
-
-      delete where.primaryDisciplineId;
+        ]
+      });
     }
 
     if (query.tagSlug) {
-      where.tags = {
-        some: {
-          tag: {
-            slug: query.tagSlug
+      and.push({
+        tags: {
+          some: {
+            tag: {
+              slug: query.tagSlug
+            }
           }
         }
-      };
+      });
     }
 
     if (query.q) {
-      where.OR = [
-        { title: { contains: query.q, mode: "insensitive" } },
-        { body: { contains: query.q, mode: "insensitive" } },
-        { paperTitle: { contains: query.q, mode: "insensitive" } }
-      ];
+      and.push({
+        OR: [
+          { title: { contains: query.q, mode: "insensitive" } },
+          { body: { contains: query.q, mode: "insensitive" } },
+          { paperTitle: { contains: query.q, mode: "insensitive" } }
+        ]
+      });
     }
+
+    const where: Prisma.TopicWhereInput = { AND: and };
 
     const orderBy: Prisma.TopicOrderByWithRelationInput =
       query.sort === "popular"
@@ -370,6 +427,64 @@ export const repository = {
     });
 
     return topics.map((topic) => toTopicListItem(topic as TopicWithRelations));
+  },
+
+  async listUnclassifiedTopics(parentDisciplineSlug: string): Promise<TopicListItem[]> {
+    const parent = await prisma.discipline.findFirst({
+      where: {
+        slug: parentDisciplineSlug,
+        parentId: null
+      }
+    });
+
+    if (!parent) {
+      return [];
+    }
+
+    const topics = await prisma.topic.findMany({
+      where: {
+        status: "PUBLISHED",
+        disciplines: {
+          some: {
+            discipline: {
+              parentId: parent.id,
+              reviewStatus: "PENDING"
+            }
+          }
+        }
+      },
+      orderBy: { lastActivityAt: "desc" },
+      include: includeTopicRelations()
+    });
+
+    return topics.map((topic) => toTopicListItem(topic as TopicWithRelations));
+  },
+
+  async countUnclassifiedTopics(parentDisciplineSlug: string): Promise<number> {
+    const parent = await prisma.discipline.findFirst({
+      where: {
+        slug: parentDisciplineSlug,
+        parentId: null
+      }
+    });
+
+    if (!parent) {
+      return 0;
+    }
+
+    return prisma.topic.count({
+      where: {
+        status: "PUBLISHED",
+        disciplines: {
+          some: {
+            discipline: {
+              parentId: parent.id,
+              reviewStatus: "PENDING"
+            }
+          }
+        }
+      }
+    });
   },
 
   async listRandomTopics(limit = 4): Promise<TopicListItem[]> {
@@ -431,6 +546,8 @@ export const repository = {
   },
 
   async createTopic(input: CreateTopicInput & { authorId: string }): Promise<TopicListItem> {
+    const disciplineIds = uniqueIds([...input.disciplineIds, input.primaryDisciplineId]);
+
     const topic = await prisma.topic.create({
       data: {
         title: input.title,
@@ -446,6 +563,9 @@ export const repository = {
               connect: { id: tagId }
             }
           }))
+        },
+        disciplines: {
+          create: disciplineIds.map((disciplineId) => ({ disciplineId }))
         },
         aiGuide: {
           create: {
@@ -633,12 +753,86 @@ export const repository = {
     });
   },
 
-  async ensureTags(names: string[], disciplineId?: string): Promise<Tag[]> {
+  async ensurePendingDisciplines(input: {
+    disciplines: NewDisciplineInput[];
+    userId: string;
+  }): Promise<Discipline[]> {
+    const result: Discipline[] = [];
+
+    for (const item of input.disciplines) {
+      const name = item.name.trim();
+      const parentId = item.parentId.trim();
+
+      if (!name || !parentId) {
+        continue;
+      }
+
+      const parent = await prisma.discipline.findFirst({
+        where: {
+          id: parentId,
+          parentId: null,
+          reviewStatus: "APPROVED"
+        }
+      });
+
+      if (!parent) {
+        continue;
+      }
+
+      const existing = await prisma.discipline.findFirst({
+        where: {
+          parentId,
+          name: {
+            equals: name,
+            mode: "insensitive"
+          }
+        }
+      });
+
+      if (existing) {
+        result.push(toDiscipline(existing));
+        continue;
+      }
+
+      const discipline = await prisma.discipline.create({
+        data: {
+          name,
+          slug: await uniqueDisciplineSlug(name, parentId),
+          parentId,
+          reviewStatus: "PENDING",
+          createdById: input.userId || null,
+          sortOrder: 999
+        }
+      });
+
+      result.push(toDiscipline(discipline));
+    }
+
+    return result;
+  },
+
+  async createPendingTags(input: {
+    tags: NewTagInput[];
+    userId: string;
+  }): Promise<Tag[]> {
     const result: Tag[] = [];
 
-    for (const rawName of names) {
-      const name = rawName.trim();
+    for (const rawTag of input.tags) {
+      const name = rawTag.name.trim();
       if (!name) {
+        continue;
+      }
+
+      const newDisciplines = await this.ensurePendingDisciplines({
+        disciplines: rawTag.newDisciplines ?? [],
+        userId: input.userId
+      });
+      const disciplineIds = uniqueIds([
+        ...rawTag.disciplineIds,
+        ...newDisciplines.map((discipline) => discipline.id)
+      ]);
+
+      if (disciplineIds.length === 0) {
         continue;
       }
 
@@ -652,7 +846,11 @@ export const repository = {
       });
 
       if (existing) {
-        result.push(toTag(existing));
+        const existingWithLinks = await prisma.tag.findUniqueOrThrow({
+          where: { id: existing.id },
+          include: { disciplines: true }
+        });
+        result.push(toTag(existingWithLinks));
         continue;
       }
 
@@ -660,14 +858,13 @@ export const repository = {
         data: {
           name,
           slug: await uniqueTagSlug(name),
-          disciplineId: disciplineId || null,
-          disciplines: disciplineId
-            ? {
-                create: {
-                  disciplineId
-                }
-              }
-            : undefined
+          disciplineId: disciplineIds[0] ?? null,
+          reviewStatus: "PENDING",
+          reviewReason: rawTag.reason?.trim() || null,
+          createdById: input.userId || null,
+          disciplines: {
+            create: disciplineIds.map((disciplineId) => ({ disciplineId }))
+          }
         },
         include: {
           disciplines: true
@@ -678,5 +875,17 @@ export const repository = {
     }
 
     return result;
+  },
+
+  async ensureTags(names: string[], disciplineId?: string): Promise<Tag[]> {
+    const newTags = names.map((name) => ({
+      name,
+      disciplineIds: disciplineId ? [disciplineId] : []
+    }));
+
+    return this.createPendingTags({
+      tags: newTags,
+      userId: ""
+    });
   }
 };

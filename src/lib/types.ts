@@ -4,6 +4,8 @@ export type TopicType = "PAPER" | "QUESTION" | "IDEA" | "RECOMMENDATION";
 
 export type TopicStatus = "DRAFT" | "PUBLISHED" | "HIDDEN";
 
+export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
+
 export type User = {
   id: string;
   name: string;
@@ -25,6 +27,10 @@ export type Discipline = {
   slug: string;
   parentId?: string | null;
   sortOrder: number;
+  reviewStatus?: ApprovalStatus;
+  createdById?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type Tag = {
@@ -33,6 +39,11 @@ export type Tag = {
   slug: string;
   disciplineId?: string | null;
   disciplineIds?: string[];
+  reviewStatus?: ApprovalStatus;
+  reviewReason?: string | null;
+  createdById?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type Reply = {
@@ -65,6 +76,7 @@ export type Topic = {
   paperUrl?: string;
   authorId: string;
   primaryDisciplineId: string;
+  disciplineIds?: string[];
   status: TopicStatus;
   tagIds: string[];
   viewCount: number;
@@ -76,6 +88,7 @@ export type Topic = {
 export type TopicListItem = Topic & {
   author: PublicUser;
   primaryDiscipline: Discipline;
+  disciplines: Discipline[];
   tags: Tag[];
   replyCount: number;
   aiGuide?: AIGuide;
@@ -96,7 +109,20 @@ export type CreateTopicInput = {
   paperTitle?: string;
   paperUrl?: string;
   primaryDisciplineId: string;
+  disciplineIds: string[];
   tagIds: string[];
+};
+
+export type NewDisciplineInput = {
+  name: string;
+  parentId: string;
+};
+
+export type NewTagInput = {
+  name: string;
+  disciplineIds: string[];
+  newDisciplines?: NewDisciplineInput[];
+  reason?: string;
 };
 
 export type CreateReplyInput = {

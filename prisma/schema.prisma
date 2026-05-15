@@ -23,31 +23,45 @@ model User {
   replies       Reply[]
   aiSessions    AIChatSession[]
   aiDrafts      AIDraft[]
+  createdDisciplines Discipline[] @relation("DisciplineCreator")
+  createdTags        Tag[]        @relation("TagCreator")
 }
 
 model Discipline {
-  id        String       @id @default(cuid())
-  name      String
-  slug      String       @unique
-  parentId  String?
-  parent    Discipline?  @relation("DisciplineTree", fields: [parentId], references: [id])
-  children  Discipline[] @relation("DisciplineTree")
-  sortOrder Int          @default(0)
+  id           String         @id @default(cuid())
+  name         String
+  slug         String         @unique
+  parentId     String?
+  parent       Discipline?    @relation("DisciplineTree", fields: [parentId], references: [id])
+  children     Discipline[]   @relation("DisciplineTree")
+  sortOrder    Int            @default(0)
+  reviewStatus ApprovalStatus @default(APPROVED)
+  createdById  String?
+  createdBy    User?          @relation("DisciplineCreator", fields: [createdById], references: [id])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  tags      Tag[]
-  tagLinks  TagDiscipline[]
-  topics    Topic[]
+  tags         Tag[]
+  tagLinks     TagDiscipline[]
+  topics       Topic[]
+  topicLinks   TopicDiscipline[]
 }
 
 model Tag {
-  id           String      @id @default(cuid())
-  name         String
-  slug         String      @unique
-  disciplineId String?
-  discipline   Discipline? @relation(fields: [disciplineId], references: [id])
+  id            String         @id @default(cuid())
+  name          String
+  slug          String         @unique
+  disciplineId  String?
+  discipline    Discipline?    @relation(fields: [disciplineId], references: [id])
+  reviewStatus  ApprovalStatus @default(APPROVED)
+  reviewReason  String?
+  createdById   String?
+  createdBy     User?          @relation("TagCreator", fields: [createdById], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
-  topics       TopicTag[]
-  disciplines  TagDiscipline[]
+  topics        TopicTag[]
+  disciplines   TagDiscipline[]
 }
 
 model TagDiscipline {
@@ -82,6 +96,7 @@ model Topic {
   aiGuide             AIGuide?
   aiSessions          AIChatSession[]
   aiDrafts            AIDraft[]
+  disciplines         TopicDiscipline[]
 }
 
 model TopicTag {
@@ -92,6 +107,16 @@ model TopicTag {
   tag     Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([topicId, tagId])
+}
+
+model TopicDiscipline {
+  topicId      String
+  disciplineId String
+
+  topic        Topic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  discipline   Discipline @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, disciplineId])
 }
 
 model Reply {
@@ -168,6 +193,12 @@ enum TopicStatus {
   DRAFT
   PUBLISHED
   HIDDEN
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum AIJobStatus {

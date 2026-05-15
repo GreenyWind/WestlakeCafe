@@ -26,7 +26,6 @@ export default async function TopicsPage({
     repository.listDisciplines(),
     repository.listTags()
   ]);
-  const leafDisciplines = disciplines.flatMap((discipline) => discipline.children);
 
   return (
     <main className="page">
@@ -62,10 +61,14 @@ export default async function TopicsPage({
               name="discipline"
             >
               <option value="">全部</option>
-              {leafDisciplines.map((discipline) => (
-                <option key={discipline.id} value={discipline.slug}>
-                  {discipline.name}
-                </option>
+              {disciplines.map((root) => (
+                <optgroup key={root.id} label={root.name}>
+                  {root.children.map((discipline) => (
+                    <option key={discipline.id} value={discipline.slug}>
+                      {discipline.name}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>

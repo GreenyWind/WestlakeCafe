@@ -13,7 +13,7 @@ export default async function NewTopicPage() {
 
   const [disciplines, tags] = await Promise.all([
     repository.listDisciplines(),
-    repository.listTags()
+    repository.listTags({ includePending: true, userId: user.id })
   ]);
 
   return (

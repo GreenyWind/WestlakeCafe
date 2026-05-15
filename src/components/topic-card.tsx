@@ -15,7 +15,7 @@ export function TopicCard({ topic }: { topic: TopicListItem }) {
     <article className="topic-card">
       <div className="topic-meta">
         <span className="type-badge">{typeText[topic.type]}</span>
-        <span>{topic.primaryDiscipline.name}</span>
+        <span>{topic.disciplines.map((discipline) => discipline.name).join(" / ")}</span>
         <span>{formatDate(topic.lastActivityAt)}</span>
       </div>
       <Link href={`/topics/${topic.id}`}>
@@ -31,6 +31,7 @@ export function TopicCard({ topic }: { topic: TopicListItem }) {
         {topic.tags.map((tag) => (
           <Link className="tag" key={tag.id} href={`/topics?tag=${tag.slug}`}>
             {tag.name}
+            {tag.reviewStatus === "PENDING" ? <span>未审核</span> : null}
           </Link>
         ))}
       </div>
