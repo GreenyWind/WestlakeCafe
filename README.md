@@ -65,6 +65,8 @@ AI_PROVIDER="mock"
 AI_PROVIDER="openai-chat-compatible"
 AI_API_KEY="在这里填阿里云百炼 DashScope API key"
 AI_MODEL="qwen-plus"
+AI_FAST_MODEL="qwen-turbo"
+AI_QUALITY_MODEL="qwen-plus"
 AI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 AI_TEMPERATURE="0.4"
 AI_TIMEOUT_MS="60000"
@@ -130,13 +132,13 @@ Poe API key 获取入口：
 https://poe.com/api/keys
 ```
 
-当前三个 AI 功能都会走同一个 provider：
+当前 topic 页 AI 功能都会走同一个 provider：
 
-- 生成/刷新 AI 导读
-- 问 AI
-- 整理发言
+- 公共 AI 概览：作者生成/更新会保存到数据库；其他用户临时生成只在当前页面展示
+- AI 助手：支持“随时问 / 澄清思路 / 形成回复”三种模式，共享同一段页面内对话历史
+- `@2楼`、`#2`、`2楼` 会把指定楼层加入“澄清思路”的上下文
 
-AI 导读结果会保存进数据库的 `AIGuide` 表；问答和整理发言目前只返回给前端，不保存历史。
+公共 AI 概览会保存进数据库的 `AIGuide` 表；AI 助手对话目前只保存在当前页面状态里，刷新后不会保留。
 
 ## 示例账号
 

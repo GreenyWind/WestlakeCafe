@@ -35,6 +35,7 @@ model Discipline {
   sortOrder Int          @default(0)
 
   tags      Tag[]
+  tagLinks  TagDiscipline[]
   topics    Topic[]
 }
 
@@ -46,6 +47,17 @@ model Tag {
   discipline   Discipline? @relation(fields: [disciplineId], references: [id])
 
   topics       TopicTag[]
+  disciplines  TagDiscipline[]
+}
+
+model TagDiscipline {
+  tagId        String
+  disciplineId String
+
+  tag          Tag        @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  discipline   Discipline @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
+
+  @@id([tagId, disciplineId])
 }
 
 model Topic {

@@ -29,10 +29,24 @@ export function TopicForm({
         setError("");
         const form = new FormData(event.currentTarget);
         const selectedTags = form.getAll("tagIds").map(String);
+        const primaryDisciplineId = String(form.get("primaryDisciplineId") ?? "");
         const newTags = String(form.get("newTags") ?? "")
           .split(",")
           .map((item) => item.trim())
           .filter(Boolean);
+        const selectedDiscipline = leafDisciplines.find((discipline) => discipline.id === primaryDisciplineId);
+        const allTagIds = new Set(selectedTags);
+
+        if (!primaryDisciplineId) {
+          setError("请选择 topic 所属主学科。");
+          return;
+        }
+
+        if (selectedDiscipline) {
+          tags
+            .filter((tag) => (tag.disciplineIds ?? (tag.disciplineId ? [tag.disciplineId] : [])).includes(selectedDiscipline.id))
+            .forEach((tag) => allTagIds.add(tag.id));
+        }
 
         startTransition(async () => {
           const response = await fetch("/api/topics", {
@@ -44,8 +58,8 @@ export function TopicForm({
               body: form.get("body"),
               paperTitle: form.get("paperTitle"),
               paperUrl: form.get("paperUrl"),
-              primaryDisciplineId: form.get("primaryDisciplineId"),
-              tagIds: selectedTags,
+              primaryDisciplineId,
+              tagIds: Array.from(allTagIds),
               newTags
             })
           });
@@ -92,6 +106,7 @@ export function TopicForm({
               </option>
             ))}
           </select>
+          <p className="field-help">topic 出现在哪个学科分类下，由这里选择的主学科和 tag 决定，不按发帖人的学院归类。</p>
         </div>
       </div>
       <div className="field">
@@ -115,7 +130,7 @@ export function TopicForm({
         </div>
       </div>
       <div className="field">
-        <label>已有 tag</label>
+        <label>已有 tag，可多选</label>
         <div className="topic-tags">
           {tags.map((tag) => (
             <label className="chip" key={tag.id}>

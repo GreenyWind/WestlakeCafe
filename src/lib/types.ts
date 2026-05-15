@@ -32,6 +32,7 @@ export type Tag = {
   name: string;
   slug: string;
   disciplineId?: string | null;
+  disciplineIds?: string[];
 };
 
 export type Reply = {
@@ -78,6 +79,10 @@ export type TopicListItem = Topic & {
   tags: Tag[];
   replyCount: number;
   aiGuide?: AIGuide;
+  aiGuideMeta?: {
+    repliesSinceGuide: number;
+    isStale: boolean;
+  };
 };
 
 export type TopicDetail = TopicListItem & {
@@ -109,6 +114,15 @@ export type AIQuestionResponse = {
 export type AIConversationMessage = {
   role: "user" | "assistant";
   content: string;
+};
+
+export type AIChatMode = "ask" | "clarify" | "draft";
+
+export type AIChatResponse = {
+  message: string;
+  mode: AIChatMode;
+  referencedReplyNumbers: number[];
+  warnings: string[];
 };
 
 export type AIPolishResponse = {

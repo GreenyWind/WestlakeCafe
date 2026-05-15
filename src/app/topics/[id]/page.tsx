@@ -138,7 +138,14 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
         </article>
 
         <aside className="stack">
-          <AITools topicId={topic.id} initialGuide={topic.aiGuide?.content} />
+          <AITools
+            topicId={topic.id}
+            initialGuide={topic.aiGuide?.content}
+            initialGuideStatus={topic.aiGuide?.status}
+            guideIsStale={Boolean(topic.aiGuideMeta?.isStale)}
+            repliesSinceGuide={topic.aiGuideMeta?.repliesSinceGuide ?? 0}
+            canPersistGuide={Boolean(canDeleteTopic)}
+          />
         </aside>
       </div>
     </main>

@@ -126,43 +126,50 @@ const tags = [
     id: "tag-human-ai",
     name: "Human-AI Interaction",
     slug: "human-ai-interaction",
-    disciplineId: "computer-science"
+    disciplineId: "computer-science",
+    disciplineIds: ["computer-science"]
   },
   {
     id: "tag-ml",
     name: "机器学习",
     slug: "machine-learning",
-    disciplineId: "computer-science"
+    disciplineId: "computer-science",
+    disciplineIds: ["computer-science", "mathematics", "clinical-medicine", "neuroscience", "materials"]
   },
   {
     id: "tag-materials-screening",
     name: "材料筛选",
     slug: "materials-screening",
-    disciplineId: "materials"
+    disciplineId: "materials",
+    disciplineIds: ["materials"]
   },
   {
     id: "tag-neural-coding",
     name: "神经编码",
     slug: "neural-coding",
-    disciplineId: "neuroscience"
+    disciplineId: "neuroscience",
+    disciplineIds: ["neuroscience", "biology"]
   },
   {
     id: "tag-bio-statistics",
     name: "生物统计",
     slug: "biostatistics",
-    disciplineId: "public-health"
+    disciplineId: "public-health",
+    disciplineIds: ["public-health", "biology", "mathematics"]
   },
   {
     id: "tag-medical-imaging",
     name: "医学影像",
     slug: "medical-imaging",
-    disciplineId: "clinical-medicine"
+    disciplineId: "clinical-medicine",
+    disciplineIds: ["clinical-medicine", "computer-science"]
   },
   {
     id: "tag-dynamical-systems",
     name: "动力系统",
     slug: "dynamical-systems",
-    disciplineId: "mathematics"
+    disciplineId: "mathematics",
+    disciplineIds: ["mathematics", "physics", "biology"]
   }
 ];
 
@@ -310,8 +317,25 @@ async function main() {
   for (const tag of tags) {
     await prisma.tag.upsert({
       where: { id: tag.id },
-      update: tag,
-      create: tag
+      update: {
+        id: tag.id,
+        name: tag.name,
+        slug: tag.slug,
+        disciplineId: tag.disciplineId,
+        disciplines: {
+          deleteMany: {},
+          create: tag.disciplineIds.map((disciplineId) => ({ disciplineId }))
+        }
+      },
+      create: {
+        id: tag.id,
+        name: tag.name,
+        slug: tag.slug,
+        disciplineId: tag.disciplineId,
+        disciplines: {
+          create: tag.disciplineIds.map((disciplineId) => ({ disciplineId }))
+        }
+      }
     });
   }
 

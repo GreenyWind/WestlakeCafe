@@ -103,6 +103,7 @@ button {
   width: min(1180px, 100%);
   margin: 0 auto;
   padding: 28px clamp(18px, 4vw, 48px) 64px;
+  overflow: visible;
 }
 
 .hero {
@@ -381,6 +382,13 @@ select:focus {
   font-weight: 650;
 }
 
+.field-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .input,
 .textarea,
 .select {
@@ -424,6 +432,26 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.ai-tools {
+  position: sticky;
+  top: 84px;
+}
+
+.ai-tools.expanded {
+  width: min(680px, calc(100vw - 36px));
+  margin-left: 0;
+  z-index: 6;
+}
+
+.ai-guide-content {
+  max-height: 9.2em;
+  overflow: hidden;
+}
+
+.ai-guide-content.expanded {
+  max-height: none;
 }
 
 .button-row {
@@ -470,6 +498,41 @@ select:focus {
 .ai-message.assistant {
   border-color: #cbded7;
   background: #f8fcfa;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.segmented-control button {
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 680;
+}
+
+.segmented-control button.active {
+  border-color: var(--border);
+  background: #fff;
+  color: var(--primary-dark);
+}
+
+.notice {
+  padding: 9px 11px;
+  border: 1px solid #efc8b6;
+  border-radius: 8px;
+  background: #fff8f3;
+  color: #7e3c23;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .topic-detail-header {
@@ -558,6 +621,15 @@ select:focus {
   .grid-2,
   .grid-3 {
     grid-template-columns: 1fr;
+  }
+
+  .ai-tools {
+    position: static;
+  }
+
+  .ai-tools.expanded {
+    width: 100%;
+    margin-left: 0;
   }
 
   .filters {

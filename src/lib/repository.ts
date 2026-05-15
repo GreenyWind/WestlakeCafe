@@ -4,6 +4,7 @@ import type {
   Discipline as PrismaDiscipline,
   Prisma,
   Reply as PrismaReply,
+  TagDiscipline as PrismaTagDiscipline,
   Tag as PrismaTag,
   Topic as PrismaTopic,
   User as PrismaUser
@@ -35,7 +36,7 @@ type TopicQuery = {
 type TopicWithRelations = PrismaTopic & {
   author: PrismaUser;
   primaryDiscipline: PrismaDiscipline;
-  tags: Array<{ tag: PrismaTag }>;
+  tags: Array<{ tag: PrismaTag & { disciplines?: Array<Pick<PrismaTagDiscipline, "disciplineId">> } }>;
   aiGuide: PrismaAIGuide | null;
   _count: { replies: number };
 };
@@ -75,10 +76,11 @@ function toDiscipline(discipline: PrismaDiscipline): Discipline {
   };
 }
 
-function toTag(tag: PrismaTag): Tag {
+function toTag(tag: PrismaTag & { disciplines?: Array<Pick<PrismaTagDiscipline, "disciplineId">> }): Tag {
   return {
     ...tag,
-    disciplineId: tag.disciplineId
+    disciplineId: tag.disciplineId,
+    disciplineIds: tag.disciplines?.map((item) => item.disciplineId) ?? (tag.disciplineId ? [tag.disciplineId] : [])
   };
 }
 
@@ -114,13 +116,21 @@ function toTopicBase(topic: PrismaTopic & { tags?: Array<{ tag: PrismaTag }> }):
 }
 
 function toTopicListItem(topic: TopicWithRelations): TopicListItem {
+  const guideUpdatedAt = topic.aiGuide?.updatedAt;
+  const isGuideOlderThanAWeek =
+    guideUpdatedAt && Date.now() - guideUpdatedAt.getTime() > 7 * 24 * 60 * 60 * 1000;
+
   return {
     ...toTopicBase(topic),
     author: toPublicUser(topic.author),
     primaryDiscipline: toDiscipline(topic.primaryDiscipline),
     tags: topic.tags.map((item) => toTag(item.tag)),
     replyCount: topic._count.replies,
-    aiGuide: toAIGuide(topic.aiGuide)
+    aiGuide: toAIGuide(topic.aiGuide),
+    aiGuideMeta: {
+      repliesSinceGuide: 0,
+      isStale: Boolean(topic.aiGuide?.status === "COMPLETED" && isGuideOlderThanAWeek)
+    }
   };
 }
 
@@ -144,7 +154,11 @@ function includeTopicRelations() {
     primaryDiscipline: true,
     tags: {
       include: {
-        tag: true
+        tag: {
+          include: {
+            disciplines: true
+          }
+        }
       }
     },
     aiGuide: true,
@@ -267,7 +281,10 @@ export const repository = {
 
   async listTags(): Promise<Tag[]> {
     const tags = await prisma.tag.findMany({
-      orderBy: { name: "asc" }
+      orderBy: { name: "asc" },
+      include: {
+        disciplines: true
+      }
     });
     return tags.map(toTag);
   },
@@ -289,6 +306,36 @@ export const repository = {
       where.primaryDisciplineId = {
         in: await getDescendantDisciplineIds(discipline.id)
       };
+
+      where.OR = [
+        { primaryDisciplineId: where.primaryDisciplineId },
+        {
+          tags: {
+            some: {
+              tag: {
+                OR: [
+                  {
+                    disciplineId: {
+                      in: await getDescendantDisciplineIds(discipline.id)
+                    }
+                  },
+                  {
+                    disciplines: {
+                      some: {
+                        disciplineId: {
+                          in: await getDescendantDisciplineIds(discipline.id)
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ];
+
+      delete where.primaryDisciplineId;
     }
 
     if (query.tagSlug) {
@@ -339,11 +386,13 @@ export const repository = {
       .map((topic) => toTopicListItem(topic as TopicWithRelations));
   },
 
-  async getTopicDetail(topicId: string): Promise<TopicDetail | null> {
-    await prisma.topic.updateMany({
-      where: { id: topicId, status: "PUBLISHED" },
-      data: { viewCount: { increment: 1 } }
-    });
+  async getTopicDetail(topicId: string, options: { incrementView?: boolean } = {}): Promise<TopicDetail | null> {
+    if (options.incrementView ?? true) {
+      await prisma.topic.updateMany({
+        where: { id: topicId, status: "PUBLISHED" },
+        data: { viewCount: { increment: 1 } }
+      });
+    }
 
     const topic = await prisma.topic.findFirst({
       where: { id: topicId, status: "PUBLISHED" },
@@ -366,6 +415,7 @@ export const repository = {
 
     return {
       ...toTopicListItem(detail),
+      aiGuideMeta: await this.getAIGuideMeta(topicId),
       replies: detail.replies.map((reply) => {
         const mapped = toReply(reply);
         if (!mapped.author) {
@@ -396,6 +446,13 @@ export const repository = {
               connect: { id: tagId }
             }
           }))
+        },
+        aiGuide: {
+          create: {
+            content: "",
+            model: "pending",
+            status: "PENDING"
+          }
         }
       },
       include: includeTopicRelations()
@@ -504,6 +561,39 @@ export const repository = {
     return toAIGuide(guide) ?? null;
   },
 
+  async getAIGuideMeta(topicId: string): Promise<{ repliesSinceGuide: number; isStale: boolean }> {
+    const guide = await prisma.aIGuide.findUnique({
+      where: { topicId },
+      select: {
+        status: true,
+        updatedAt: true
+      }
+    });
+
+    if (!guide || guide.status !== "COMPLETED") {
+      return {
+        repliesSinceGuide: 0,
+        isStale: false
+      };
+    }
+
+    const repliesSinceGuide = await prisma.reply.count({
+      where: {
+        topicId,
+        deletedAt: null,
+        createdAt: {
+          gt: guide.updatedAt
+        }
+      }
+    });
+    const isOlderThanAWeek = Date.now() - guide.updatedAt.getTime() > 7 * 24 * 60 * 60 * 1000;
+
+    return {
+      repliesSinceGuide,
+      isStale: repliesSinceGuide >= 5 || isOlderThanAWeek
+    };
+  },
+
   async upsertAIGuide(topicId: string, content: string, model: string): Promise<AIGuide> {
     const guide = await prisma.aIGuide.upsert({
       where: { topicId },
@@ -526,6 +616,21 @@ export const repository = {
     }
 
     return mapped;
+  },
+
+  async markAIGuideFailed(topicId: string): Promise<void> {
+    await prisma.aIGuide.upsert({
+      where: { topicId },
+      update: {
+        status: "FAILED" satisfies AIJobStatus
+      },
+      create: {
+        topicId,
+        content: "",
+        model: "unknown",
+        status: "FAILED"
+      }
+    });
   },
 
   async ensureTags(names: string[], disciplineId?: string): Promise<Tag[]> {
@@ -555,7 +660,17 @@ export const repository = {
         data: {
           name,
           slug: await uniqueTagSlug(name),
-          disciplineId: disciplineId || null
+          disciplineId: disciplineId || null,
+          disciplines: disciplineId
+            ? {
+                create: {
+                  disciplineId
+                }
+              }
+            : undefined
+        },
+        include: {
+          disciplines: true
         }
       });
 

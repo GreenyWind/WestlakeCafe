@@ -1,7 +1,14 @@
 import { execFile } from "node:child_process";
 import https from "node:https";
 import { repository } from "@/lib/repository";
-import type { AIConversationMessage, AIQuestionResponse, AIPolishResponse, TopicDetail } from "@/lib/types";
+import type {
+  AIChatMode,
+  AIChatResponse,
+  AIConversationMessage,
+  AIQuestionResponse,
+  AIPolishResponse,
+  TopicDetail
+} from "@/lib/types";
 import { truncate } from "@/lib/utils";
 
 type ChatMessage = {
@@ -45,6 +52,8 @@ const POE_TRANSPORT = process.env.POE_TRANSPORT ?? "https";
 
 const CHAT_API_KEY = process.env.AI_API_KEY ?? process.env.OPENAI_API_KEY ?? "";
 const CHAT_MODEL = process.env.AI_MODEL ?? process.env.OPENAI_MODEL ?? "qwen-plus";
+const CHAT_FAST_MODEL = process.env.AI_FAST_MODEL ?? "qwen-turbo";
+const CHAT_QUALITY_MODEL = process.env.AI_QUALITY_MODEL ?? CHAT_MODEL;
 const CHAT_BASE_URL =
   process.env.AI_BASE_URL ?? process.env.OPENAI_BASE_URL ?? "https://dashscope.aliyuncs.com/compatible-mode/v1";
 const CHAT_TEMPERATURE = Number(process.env.AI_TEMPERATURE ?? 0.4);
@@ -77,6 +86,62 @@ function topicContext(topic: TopicDetail) {
     .join("\n");
 }
 
+function topicMainPostContext(topic: TopicDetail) {
+  const tags = topic.tags.map((tag) => tag.name).join("、") || "暂无 tag";
+
+  return [
+    `标题：${topic.title}`,
+    `类型：${topic.type}`,
+    `主学科：${topic.primaryDiscipline.name}`,
+    `标签：${tags}`,
+    topic.paperTitle ? `论文标题：${topic.paperTitle}` : "",
+    topic.paperUrl ? `论文链接：${topic.paperUrl}` : "",
+    `主楼正文：${truncate(topic.body, 2600)}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function parseReplyReferences(input: string) {
+  const result = new Set<number>();
+  const patterns = [/@\s*(\d+)\s*楼/g, /#\s*(\d+)/g, /(?:^|[^\d])(\d+)\s*楼/g];
+
+  for (const pattern of patterns) {
+    for (const match of input.matchAll(pattern)) {
+      const value = Number(match[1]);
+      if (Number.isInteger(value) && value > 0) {
+        result.add(value);
+      }
+    }
+  }
+
+  return Array.from(result).sort((a, b) => a - b);
+}
+
+function referencedRepliesContext(topic: TopicDetail, numbers: number[]) {
+  const warnings: string[] = [];
+  const included = numbers.flatMap((number) => {
+    const reply = topic.replies[number - 1];
+
+    if (!reply) {
+      warnings.push(`${number}楼不存在，未加入上下文。`);
+      return [];
+    }
+
+    if (reply.deletedAt) {
+      warnings.push(`${number}楼已删除，未加入上下文。`);
+      return [];
+    }
+
+    return [`${number}楼（${reply.author.name}）：${truncate(reply.body, 900)}`];
+  });
+
+  return {
+    text: included.length ? included.join("\n\n") : "未引用具体楼层。",
+    warnings
+  };
+}
+
 function conversationContext(messages: AIConversationMessage[] = []) {
   if (!messages.length) {
     return "暂无历史对话";
@@ -107,6 +172,65 @@ function questionContext(topic: TopicDetail, messages: AIConversationMessage[], 
     "3. 面向外领域博士生，先解释关键概念，再给判断或讨论方向。",
     "4. 结尾给出 2 个自然的继续追问方向。"
   ].join("\n");
+}
+
+function chatPrompt(topic: TopicDetail, input: string, messages: AIConversationMessage[], mode: AIChatMode) {
+  const referencedReplyNumbers = parseReplyReferences(input);
+  const referenced = referencedRepliesContext(topic, referencedReplyNumbers);
+  const history = conversationContext(messages);
+
+  if (mode === "ask") {
+    return {
+      prompt: [
+        "Topic 主楼上下文如下：",
+        topicMainPostContext(topic),
+        "",
+        "本页 AI 对话历史如下：",
+        history,
+        "",
+        `用户最新问题：${input}`,
+        "",
+        "请回答用户的问题，重点帮助跨领域或刚进入该领域的读者理解专业术语、方法名、研究背景和概念边界。"
+      ].join("\n"),
+      referencedReplyNumbers,
+      warnings: referenced.warnings
+    };
+  }
+
+  if (mode === "clarify") {
+    return {
+      prompt: [
+        "Topic 主楼上下文如下：",
+        topicMainPostContext(topic),
+        "",
+        "用户引用的楼层如下：",
+        referenced.text,
+        "",
+        "本页 AI 对话历史如下：",
+        history,
+        "",
+        `用户最新想法：${input}`,
+        "",
+        "请帮助用户澄清想法。不要直接生成最终回复。"
+      ].join("\n"),
+      referencedReplyNumbers,
+      warnings: referenced.warnings
+    };
+  }
+
+  return {
+    prompt: [
+      "本页 AI 对话历史如下：",
+      history,
+      "",
+      `用户最新要求：${input}`,
+      "",
+      "请主要基于上述 AI 对话历史，生成一段可以发布到讨论区的中文回复。必要时参考下面的 topic 主楼以避免脱离语境：",
+      topicMainPostContext(topic)
+    ].join("\n"),
+    referencedReplyNumbers,
+    warnings: referenced.warnings
+  };
 }
 
 function draftingContext(topic: TopicDetail, messages: AIConversationMessage[], input: string, mode: "clarify" | "draft") {
@@ -147,12 +271,12 @@ function mockGuide(topic: TopicDetail) {
   const tags = topic.tags.map((tag) => tag.name).join("、") || "暂无 tag";
 
   return [
-    `## 摘要`,
-    `这个 topic 属于${topic.primaryDiscipline.name}，相关 tag 包括：${tags}。讨论主线可以先概括为：${truncate(topic.body, 260)}`,
-    "## 外领域读者先看什么",
-    "先判断发帖人关心的是研究问题、方法、评价指标、机制解释，还是应用边界。",
-    "## 可以怎么参与",
-    "可以围绕关键概念、隐含假设、证据强度、跨领域类比这几个角度提出问题。"
+    "## 术语解释",
+    `这个 topic 属于${topic.primaryDiscipline.name}，相关 tag 包括：${tags}。`,
+    "## 一句话摘要",
+    `讨论主线可以先概括为：${truncate(topic.body, 180)}`,
+    "## 展开解释",
+    "先判断发帖人关心的是研究问题、方法、评价指标、机制解释，还是应用边界。"
   ].join("\n\n");
 }
 
@@ -185,30 +309,24 @@ function mockPolish(topic: TopicDetail, input: string): AIPolishResponse {
 
 function guidePrompt(topic: TopicDetail) {
   return [
-    "请为下面这个校内学术 topic 生成一份外领域博士生可读的摘要和讨论导读。",
-    "目标不是宣传这个 topic，而是降低跨领域参与门槛。",
+    "请为下面这个校内学术 topic 生成一份简短的外领域读者概览。",
+    "目标是降低跨领域阅读门槛，不要评价论文质量，不要猜测论文里没有的信息。",
     "",
     "请严格按下面结构输出：",
+    "## 术语解释",
+    "解释 3-5 个理解主楼必需的术语或背景。每个解释 1-2 句，优先解释帖子里真的出现的词。",
+    "",
     "## 一句话摘要",
     "用 1-2 句话概括这个 topic 想讨论什么。",
     "",
-    "## 讨论脉络",
-    "用 3-5 条短 bullet 说明：研究/问题背景、发帖人关心的核心点、已有回复里出现的方向。",
-    "",
-    "## 外领域读者需要补的背景",
-    "解释 3-5 个必要概念。不要假装读过论文全文，只能基于 topic 和通用背景知识。",
-    "",
-    "## 可能值得追问",
-    "给出 3-5 个可直接拿去参与讨论的问题。",
-    "",
-    "## 需要谨慎的地方",
-    "列出哪些判断依赖原文、数据或领域知识，目前仅凭帖子不能确定。",
+    "## 展开解释",
+    "用 3-5 条短 bullet 解释主楼的讨论背景、问题焦点和为什么外领域读者可能会关心。",
     "",
     topicContext(topic)
   ].join("\n");
 }
 
-async function callModel(system: string, user: string, options?: { maxTokens?: number }) {
+async function callModel(system: string, user: string, options?: { maxTokens?: number; model?: string }) {
   if (AI_PROVIDER === "poe") {
     return callPoe(
       [
@@ -230,7 +348,7 @@ async function callModel(system: string, user: string, options?: { maxTokens?: n
     AI_PROVIDER === "deepseek" ||
     AI_PROVIDER === "siliconflow"
   ) {
-    return callChatCompletions(system, user, { maxTokens: options?.maxTokens });
+    return callChatCompletions(system, user, { maxTokens: options?.maxTokens, model: options?.model });
   }
 
   throw new Error(`UNSUPPORTED_AI_PROVIDER:${AI_PROVIDER}`);
@@ -240,13 +358,13 @@ function chatCompletionsEndpoint() {
   return `${CHAT_BASE_URL.replace(/\/+$/, "")}/chat/completions`;
 }
 
-async function callChatCompletions(system: string, user: string, options?: { maxTokens?: number }) {
+async function callChatCompletions(system: string, user: string, options?: { maxTokens?: number; model?: string }) {
   if (!CHAT_API_KEY) {
     throw new Error("AI_API_KEY_MISSING");
   }
 
   const requestBody: Record<string, unknown> = {
-    model: CHAT_MODEL,
+    model: options?.model ?? CHAT_MODEL,
     messages: [
       { role: "system", content: system },
       { role: "user", content: user }
@@ -543,11 +661,19 @@ function systemGuidePrompt() {
 }
 
 function systemQuestionPrompt() {
-  return "你是一个常驻 topic 页面的学术问答助手。请跟随用户连续提问，主要基于 topic 上下文回答；如果需要补充通用背景，请明确说明这是背景知识而不是帖子中出现的信息。用中文回答，避免空泛鼓励。";
+  return "你是 topic 页面里的跨领域学术解释助手。优先帮助用户理解专业术语、研究背景、方法名和概念边界。请先判断术语在当前 topic 所属领域中的含义，不要脱离学科语境泛泛解释。如果帖子信息不足，请明确说明不确定，并给出可能的理解分支。用中文回答。";
+}
+
+function systemClarifyPrompt() {
+  return "你是帮助博士生澄清发言思路的学术讨论伙伴。请基于主楼和用户引用的楼层理解讨论语境，先复述用户想表达的直觉，再指出其中需要澄清的概念、假设、证据或对象，最后提出 2-3 个具体追问，帮助用户把想法收束成可讨论的问题。用中文回答。";
+}
+
+function systemDraftPrompt() {
+  return "你是帮助用户把已有讨论整理成可发布回复的学术写作助手。请主要基于用户与助手的对话历史生成回复，语气谦逊、具体、可回应。不要替用户夸大结论，不要编造证据。如有不确定之处，请在回复中自然表达。用中文回答。";
 }
 
 function systemPolishPrompt() {
-  return "你是一个帮助博士生把模糊直觉澄清成清晰、礼貌、可讨论发言的学术写作伙伴。先追问和澄清，再在用户需要时形成回复草稿。不要替用户夸大结论，不要编造证据。用中文回答。";
+  return systemClarifyPrompt();
 }
 
 function isRealProvider() {
@@ -585,18 +711,91 @@ function modelLabel() {
   return "mock-guide-v1";
 }
 
+function modelLabelFor(model: string) {
+  if (
+    AI_PROVIDER === "openai-chat-compatible" ||
+    AI_PROVIDER === "chat-completions" ||
+    AI_PROVIDER === "dashscope" ||
+    AI_PROVIDER === "deepseek" ||
+    AI_PROVIDER === "siliconflow"
+  ) {
+    return `chat-completions:${model}`;
+  }
+
+  return modelLabel();
+}
+
 export const aiService = {
-  async generateTopicGuide(topicId: string) {
-    const topic = await repository.getTopicDetail(topicId);
+  async generateTopicGuide(topicId: string, options: { persist?: boolean } = {}) {
+    const topic = await repository.getTopicDetail(topicId, { incrementView: false });
     if (!topic) {
       throw new Error("TOPIC_NOT_FOUND");
     }
 
+    const persist = options.persist ?? true;
+    const guideModel = CHAT_QUALITY_MODEL;
     const content = isRealProvider()
-      ? await callModel(systemGuidePrompt(), guidePrompt(topic), { maxTokens: 1600 })
+      ? await callModel(systemGuidePrompt(), guidePrompt(topic), { maxTokens: 1600, model: guideModel })
       : mockGuide(topic);
 
-    return repository.upsertAIGuide(topicId, content, modelLabel());
+    if (!persist) {
+      return {
+        id: "temporary",
+        topicId,
+        content,
+        model: modelLabelFor(guideModel),
+        status: "COMPLETED" as const,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    return repository.upsertAIGuide(topicId, content, modelLabelFor(guideModel));
+  },
+
+  async markTopicGuideFailed(topicId: string) {
+    await repository.markAIGuideFailed(topicId);
+  },
+
+  async chat(
+    topicId: string,
+    input: string,
+    mode: AIChatMode,
+    messages: AIConversationMessage[] = []
+  ): Promise<AIChatResponse> {
+    const topic = await repository.getTopicDetail(topicId, { incrementView: false });
+    if (!topic) {
+      throw new Error("TOPIC_NOT_FOUND");
+    }
+
+    const { prompt, referencedReplyNumbers, warnings } = chatPrompt(topic, input, messages, mode);
+
+    if (!isRealProvider()) {
+      const mock =
+        mode === "ask"
+          ? mockAnswer(topic, input).answer
+          : mockPolish(topic, input).polished;
+      return {
+        message: mock,
+        mode,
+        referencedReplyNumbers,
+        warnings
+      };
+    }
+
+    const system =
+      mode === "ask" ? systemQuestionPrompt() : mode === "clarify" ? systemClarifyPrompt() : systemDraftPrompt();
+    const model = mode === "draft" ? CHAT_QUALITY_MODEL : CHAT_FAST_MODEL;
+
+    return {
+      message: await callModel(system, prompt, {
+        maxTokens: mode === "draft" ? 1400 : 1000,
+        model
+      }),
+      mode,
+      referencedReplyNumbers,
+      warnings
+    };
   },
 
   async answerQuestion(
@@ -604,7 +803,7 @@ export const aiService = {
     question: string,
     messages: AIConversationMessage[] = []
   ): Promise<AIQuestionResponse> {
-    const topic = await repository.getTopicDetail(topicId);
+    const topic = await repository.getTopicDetail(topicId, { incrementView: false });
     if (!topic) {
       throw new Error("TOPIC_NOT_FOUND");
     }
@@ -627,7 +826,7 @@ export const aiService = {
     messages: AIConversationMessage[] = [],
     mode: "clarify" | "draft" = "clarify"
   ): Promise<AIPolishResponse> {
-    const topic = await repository.getTopicDetail(topicId);
+    const topic = await repository.getTopicDetail(topicId, { incrementView: false });
     if (!topic) {
       throw new Error("TOPIC_NOT_FOUND");
     }
