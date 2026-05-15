@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-export function RegisterForm() {
+export function RegisterForm({ nextPath = "/" }: { nextPath?: string }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
@@ -35,8 +35,8 @@ export function RegisterForm() {
             return;
           }
 
+          router.push(nextPath);
           router.refresh();
-          router.push("/");
         });
       }}
     >

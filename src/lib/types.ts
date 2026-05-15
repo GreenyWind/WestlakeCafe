@@ -14,6 +14,7 @@ export type User = {
   researchField?: string;
   role: UserRole;
   createdAt: string;
+  updatedAt?: string;
 };
 
 export type PublicUser = Omit<User, "passwordHash">;
@@ -22,7 +23,7 @@ export type Discipline = {
   id: string;
   name: string;
   slug: string;
-  parentId?: string;
+  parentId?: string | null;
   sortOrder: number;
 };
 
@@ -30,7 +31,7 @@ export type Tag = {
   id: string;
   name: string;
   slug: string;
-  disciplineId?: string;
+  disciplineId?: string | null;
 };
 
 export type Reply = {
@@ -39,6 +40,7 @@ export type Reply = {
   authorId: string;
   body: string;
   parentReplyId?: string;
+  deletedAt?: string;
   createdAt: string;
   updatedAt: string;
 };

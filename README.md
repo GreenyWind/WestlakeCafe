@@ -1,6 +1,6 @@
 # Campus Topic Lab
 
-一个面向校内博士生跨领域学术讨论的 MVP 网页应用骨架。
+面向校内博士生跨领域学术讨论的 MVP 网页应用。
 
 ## 已覆盖的 MVP
 
@@ -10,37 +10,123 @@
 - 学科/topic 列表页
 - topic 创建、浏览、回复
 - tag 系统
-- AI 导读区域 UI
-- AI 问答 UI
-- AI 辅助发言 UI
-- AI 后端接口占位，当前返回 mock 内容
+- AI 导读、AI 问答、AI 辅助发言
+- PostgreSQL + Prisma 持久化
+- AI provider 可切换 mock、Poe 或 OpenAI-compatible Responses API
 
 ## 技术栈
 
 - Next.js App Router
+- React
 - TypeScript
-- Prisma schema + PostgreSQL 设计
-- 当前运行时数据层为内存 mock repository，便于快速预览
+- PostgreSQL
+- Prisma
+- OpenAI-compatible Responses API / Poe API
 
 ## 本地运行
 
-```bash
-npm install
-npm run dev
-```
-
-打开 http://127.0.0.1:3000。
-
-Windows PowerShell 如果禁止执行 `npm.ps1`，可使用：
+Windows PowerShell 如果禁止执行 `npm.ps1`，使用 `npm.cmd`：
 
 ```powershell
 npm.cmd install
 npm.cmd run dev
 ```
 
-## 后续接数据库
+打开 http://127.0.0.1:3000。
 
-1. 配置 `.env` 中的 `DATABASE_URL`
-2. 执行 `npm run prisma:generate`
-3. 执行 `npm run prisma:migrate`
-4. 将 `src/lib/repository.ts` 替换为 Prisma repository 实现
+## 数据库配置
+
+当前本地开发使用 PostgreSQL：
+
+```env
+DATABASE_URL="postgresql://postgres:1001word@localhost:5432/WestlakeCafe"
+SESSION_COOKIE_NAME="ctl_session"
+```
+
+第一次初始化数据库：
+
+```powershell
+npm.cmd run prisma:generate
+npx.cmd prisma migrate dev --name init
+npm.cmd run seed
+```
+
+## AI 配置
+
+默认使用 mock，不需要 API key：
+
+```env
+AI_PROVIDER="mock"
+```
+
+要启用你现在这个转接平台，在 `.env` 里改成：
+
+```env
+AI_PROVIDER="openai-responses"
+OPENAI_API_KEY="在这里填转接平台 API key"
+OPENAI_MODEL="gpt-5.4"
+OPENAI_BASE_URL="https://capi.quan2go.com/openai"
+OPENAI_REASONING_EFFORT="medium"
+OPENAI_DISABLE_RESPONSE_STORAGE="true"
+AI_TIMEOUT_MS="60000"
+```
+
+后端会请求 `OPENAI_BASE_URL + /responses`。如果某个转接平台要求 `/v1/responses`，把 `OPENAI_BASE_URL` 改成带 `/v1` 的地址即可。
+
+也可以启用 Poe，在 `.env` 里改成：
+
+```env
+AI_PROVIDER="poe"
+POE_API_KEY="在这里填你的 Poe API key"
+POE_MODEL="Claude-Sonnet-4.6"
+POE_BASE_URL="https://api.poe.com/v1"
+AI_TIMEOUT_MS="60000"
+```
+
+Poe API key 获取入口：
+
+```text
+https://poe.com/api/keys
+```
+
+当前三个 AI 功能都会走同一个 provider：
+
+- 生成/刷新 AI 导读
+- 问 AI
+- 整理发言
+
+AI 导读结果会保存进数据库的 `AIGuide` 表；问答和整理发言目前只返回给前端，不保存历史。
+
+## 示例账号
+
+```text
+demo@university.edu
+demo1234
+```
+
+seed 脚本还会创建：
+
+```text
+bio@university.edu / demo1234
+med@university.edu / demo1234
+```
+
+## 重要文件
+
+- `prisma/schema.prisma`：数据库表结构
+- `prisma/seed.ts`：初始化示例数据
+- `src/lib/prisma.ts`：Prisma Client 单例
+- `src/lib/repository.ts`：数据库读写入口
+- `src/lib/ai-service.ts`：AI provider，包含 mock、Poe 和 OpenAI-compatible Responses API 实现
+- `src/app/api/*`：后端 API
+- `src/app/*/page.tsx`：页面
+- `src/components/*`：前端组件
+
+## 当前仍是简化实现的部分
+
+- 没有 PDF 上传和论文解析
+- 没有向量检索/RAG
+- 没有 AI 问答历史保存
+- 用户登录还没有邮箱验证、SSO、找回密码
+- 推荐仍是随机推荐
+- 没有管理员后台、举报审核、通知、点赞收藏等功能

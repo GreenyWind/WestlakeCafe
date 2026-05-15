@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ExternalLink, MessageSquare } from "lucide-react";
 import { notFound } from "next/navigation";
 import { AITools } from "@/components/ai-tools";
+import { DeleteReplyButton } from "@/components/delete-reply-button";
+import { DeleteTopicButton } from "@/components/delete-topic-button";
 import { ReplyForm } from "@/components/forms/reply-form";
 import { repository } from "@/lib/repository";
 import { getCurrentUser } from "@/lib/session";
@@ -23,6 +25,8 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
   if (!topic) {
     notFound();
   }
+
+  const canDeleteTopic = user && user.id === topic.authorId;
 
   return (
     <main className="page">
@@ -50,6 +54,7 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
                 </Link>
               ))}
             </div>
+            {canDeleteTopic ? <DeleteTopicButton topicId={topic.id} /> : null}
           </header>
 
           {topic.paperTitle || topic.paperUrl ? (
@@ -75,18 +80,39 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
               <MessageSquare size={20} aria-hidden="true" /> 讨论回复
             </h2>
             {topic.replies.length > 0 ? (
-              topic.replies.map((reply) => (
-                <article className="reply" key={reply.id}>
-                  <div className="reply-header">
-                    <span>
-                      {reply.author.name}
-                      {reply.author.department ? ` · ${reply.author.department}` : ""}
-                    </span>
-                    <span>{formatDate(reply.createdAt)}</span>
-                  </div>
-                  <p className="body-text">{reply.body}</p>
-                </article>
-              ))
+              topic.replies.map((reply, index) => {
+                const isDeleted = Boolean(reply.deletedAt);
+                const canDeleteReply =
+                  user &&
+                  !isDeleted &&
+                  user.id === reply.authorId;
+
+                return (
+                  <article className="reply" key={reply.id}>
+                    <div className="reply-header">
+                      <span>
+                        #{index + 1}
+                        {isDeleted
+                          ? " · 回复已删除"
+                          : ` · ${reply.author.name}${
+                              reply.author.department ? ` · ${reply.author.department}` : ""
+                            }`}
+                      </span>
+                      <span className="topic-meta">
+                        <span>{formatDate(reply.createdAt)}</span>
+                        {canDeleteReply ? (
+                          <DeleteReplyButton topicId={topic.id} replyId={reply.id} />
+                        ) : null}
+                      </span>
+                    </div>
+                    {isDeleted ? (
+                      <p className="body-text muted">回复已删除</p>
+                    ) : (
+                      <p className="body-text">{reply.body}</p>
+                    )}
+                  </article>
+                );
+              })
             ) : (
               <div className="empty">还没有回复，适合做第一个提问的人。</div>
             )}
@@ -99,7 +125,11 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
               <div className="empty">
                 登录后可以回复。
                 <br />
-                <Link className="button" href="/login" style={{ marginTop: 12 }}>
+                <Link
+                  className="button"
+                  href={`/login?next=${encodeURIComponent(`/topics/${topic.id}`)}`}
+                  style={{ marginTop: 12 }}
+                >
                   去登录
                 </Link>
               </div>

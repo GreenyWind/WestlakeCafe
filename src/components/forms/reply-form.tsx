@@ -15,7 +15,9 @@ export function ReplyForm({ topicId }: { topicId: string }) {
       onSubmit={(event) => {
         event.preventDefault();
         setError("");
-        const form = new FormData(event.currentTarget);
+
+        const formElement = event.currentTarget;
+        const form = new FormData(formElement);
         const body = String(form.get("body") ?? "");
 
         startTransition(async () => {
@@ -31,7 +33,7 @@ export function ReplyForm({ topicId }: { topicId: string }) {
             return;
           }
 
-          event.currentTarget.reset();
+          formElement.reset();
           router.refresh();
         });
       }}

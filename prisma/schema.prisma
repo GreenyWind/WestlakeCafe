@@ -92,6 +92,7 @@ model Reply {
   parentReplyId String?
   parentReply   Reply?   @relation("ReplyThread", fields: [parentReplyId], references: [id])
   childReplies  Reply[]  @relation("ReplyThread")
+  deletedAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

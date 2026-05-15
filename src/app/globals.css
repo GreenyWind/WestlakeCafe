@@ -339,6 +339,21 @@ h3 {
   border-color: transparent;
 }
 
+.button.danger {
+  color: #9a2f25;
+  border-color: #f0c4bd;
+}
+
+.button.secondary.danger {
+  background: #fff7f5;
+}
+
+.button.small {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
 .button:focus,
 input:focus,
 textarea:focus,

@@ -1,11 +1,15 @@
-import {
-  aiGuides,
-  disciplines,
-  replies,
-  tags,
-  topics,
-  users
-} from "@/lib/mock-data";
+import type {
+  AIJobStatus,
+  AIGuide as PrismaAIGuide,
+  Discipline as PrismaDiscipline,
+  Prisma,
+  Reply as PrismaReply,
+  Tag as PrismaTag,
+  Topic as PrismaTopic,
+  User as PrismaUser
+} from "@prisma/client";
+import { hashPassword, verifyPassword } from "@/lib/password";
+import { prisma } from "@/lib/prisma";
 import type {
   AIGuide,
   CreateReplyInput,
@@ -28,40 +32,143 @@ type TopicQuery = {
   sort?: "latest" | "active" | "popular";
 };
 
-const publicUser = (user: User): PublicUser => {
-  const { passwordHash, ...rest } = user;
-  return rest;
+type TopicWithRelations = PrismaTopic & {
+  author: PrismaUser;
+  primaryDiscipline: PrismaDiscipline;
+  tags: Array<{ tag: PrismaTag }>;
+  aiGuide: PrismaAIGuide | null;
+  _count: { replies: number };
 };
 
-const bySortOrder = (a: Discipline, b: Discipline) => a.sortOrder - b.sortOrder;
+type TopicDetailWithRelations = TopicWithRelations & {
+  replies: Array<PrismaReply & { author: PrismaUser }>;
+};
 
-function getTopicRelations(topic: Topic): TopicListItem {
-  const author = users.find((user) => user.id === topic.authorId);
-  const primaryDiscipline = disciplines.find(
-    (discipline) => discipline.id === topic.primaryDisciplineId
-  );
+function toDateString(value: Date | string) {
+  return value instanceof Date ? value.toISOString() : value;
+}
 
-  if (!author || !primaryDiscipline) {
-    throw new Error(`Invalid topic relations for ${topic.id}`);
-  }
-
+function toPublicUser(user: PrismaUser): PublicUser {
+  const { passwordHash, ...rest } = user;
   return {
-    ...topic,
-    author: publicUser(author),
-    primaryDiscipline,
-    tags: tags.filter((tag) => topic.tagIds.includes(tag.id)),
-    replyCount: replies.filter((reply) => reply.topicId === topic.id).length,
-    aiGuide: aiGuides.find((guide) => guide.topicId === topic.id)
+    ...rest,
+    school: rest.school ?? undefined,
+    department: rest.department ?? undefined,
+    researchField: rest.researchField ?? undefined,
+    createdAt: toDateString(rest.createdAt),
+    updatedAt: toDateString(rest.updatedAt)
   };
 }
 
-function getDescendantDisciplineIds(disciplineId: string) {
+function toUser(user: PrismaUser): User {
+  return {
+    ...toPublicUser(user),
+    passwordHash: user.passwordHash
+  };
+}
+
+function toDiscipline(discipline: PrismaDiscipline): Discipline {
+  return {
+    ...discipline,
+    parentId: discipline.parentId,
+    sortOrder: discipline.sortOrder
+  };
+}
+
+function toTag(tag: PrismaTag): Tag {
+  return {
+    ...tag,
+    disciplineId: tag.disciplineId
+  };
+}
+
+function toAIGuide(guide: PrismaAIGuide | null): AIGuide | undefined {
+  if (!guide) {
+    return undefined;
+  }
+
+  return {
+    ...guide,
+    createdAt: toDateString(guide.createdAt),
+    updatedAt: toDateString(guide.updatedAt)
+  };
+}
+
+function toTopicBase(topic: PrismaTopic & { tags?: Array<{ tag: PrismaTag }> }): Topic {
+  return {
+    id: topic.id,
+    title: topic.title,
+    type: topic.type,
+    body: topic.body,
+    paperTitle: topic.paperTitle ?? undefined,
+    paperUrl: topic.paperUrl ?? undefined,
+    authorId: topic.authorId,
+    primaryDisciplineId: topic.primaryDisciplineId,
+    status: topic.status,
+    tagIds: topic.tags?.map((item) => item.tag.id) ?? [],
+    viewCount: topic.viewCount,
+    createdAt: toDateString(topic.createdAt),
+    updatedAt: toDateString(topic.updatedAt),
+    lastActivityAt: toDateString(topic.lastActivityAt)
+  };
+}
+
+function toTopicListItem(topic: TopicWithRelations): TopicListItem {
+  return {
+    ...toTopicBase(topic),
+    author: toPublicUser(topic.author),
+    primaryDiscipline: toDiscipline(topic.primaryDiscipline),
+    tags: topic.tags.map((item) => toTag(item.tag)),
+    replyCount: topic._count.replies,
+    aiGuide: toAIGuide(topic.aiGuide)
+  };
+}
+
+function toReply(reply: PrismaReply & { author?: PrismaUser }): Reply & { author?: PublicUser } {
+  return {
+    id: reply.id,
+    topicId: reply.topicId,
+    authorId: reply.authorId,
+    body: reply.body,
+    parentReplyId: reply.parentReplyId ?? undefined,
+    deletedAt: reply.deletedAt ? toDateString(reply.deletedAt) : undefined,
+    createdAt: toDateString(reply.createdAt),
+    updatedAt: toDateString(reply.updatedAt),
+    author: reply.author ? toPublicUser(reply.author) : undefined
+  };
+}
+
+function includeTopicRelations() {
+  return {
+    author: true,
+    primaryDiscipline: true,
+    tags: {
+      include: {
+        tag: true
+      }
+    },
+    aiGuide: true,
+    _count: {
+      select: {
+        replies: true
+      }
+    }
+  } satisfies Prisma.TopicInclude;
+}
+
+async function getDescendantDisciplineIds(disciplineId: string) {
+  const all = await prisma.discipline.findMany({
+    select: {
+      id: true,
+      parentId: true
+    }
+  });
   const result = new Set<string>([disciplineId]);
   let changed = true;
 
   while (changed) {
     changed = false;
-    disciplines.forEach((discipline) => {
+    all.forEach((discipline) => {
       if (discipline.parentId && result.has(discipline.parentId) && !result.has(discipline.id)) {
         result.add(discipline.id);
         changed = true;
@@ -69,21 +176,33 @@ function getDescendantDisciplineIds(disciplineId: string) {
     });
   }
 
-  return result;
+  return Array.from(result);
 }
 
-function id(prefix: string) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+async function uniqueTagSlug(name: string) {
+  const base = slugify(name) || `tag-${Date.now()}`;
+  let candidate = base;
+  let counter = 2;
+
+  while (await prisma.tag.findUnique({ where: { slug: candidate } })) {
+    candidate = `${base}-${counter}`;
+    counter += 1;
+  }
+
+  return candidate;
 }
 
 export const repository = {
   async getPublicUser(userId: string): Promise<PublicUser | null> {
-    const user = users.find((item) => item.id === userId);
-    return user ? publicUser(user) : null;
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    return user ? toPublicUser(user) : null;
   },
 
   async findUserByEmail(email: string): Promise<User | null> {
-    return users.find((user) => user.email.toLowerCase() === email.toLowerCase()) ?? null;
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() }
+    });
+    return user ? toUser(user) : null;
   },
 
   async createUser(input: {
@@ -98,243 +217,351 @@ export const repository = {
       throw new Error("EMAIL_EXISTS");
     }
 
-    const user: User = {
-      id: id("user"),
-      name: input.name,
-      email: input.email,
-      passwordHash: input.password,
-      school: "示例大学",
-      department: input.department,
-      researchField: input.researchField,
-      role: "STUDENT",
-      createdAt: new Date().toISOString()
-    };
+    const user = await prisma.user.create({
+      data: {
+        name: input.name,
+        email: input.email.toLowerCase(),
+        passwordHash: hashPassword(input.password),
+        school: "示例大学",
+        department: input.department || null,
+        researchField: input.researchField || null
+      }
+    });
 
-    users.push(user);
-    return publicUser(user);
+    return toPublicUser(user);
   },
 
   async validateLogin(email: string, password: string): Promise<PublicUser | null> {
-    const user = await this.findUserByEmail(email);
-    if (!user || user.passwordHash !== password) {
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() }
+    });
+
+    if (!user || !verifyPassword(password, user.passwordHash)) {
       return null;
     }
 
-    return publicUser(user);
+    return toPublicUser(user);
   },
 
   async listDisciplines(): Promise<Array<Discipline & { children: Discipline[] }>> {
-    return disciplines
-      .filter((discipline) => !discipline.parentId)
-      .sort(bySortOrder)
-      .map((discipline) => ({
-        ...discipline,
-        children: disciplines
-          .filter((child) => child.parentId === discipline.id)
-          .sort(bySortOrder)
-      }));
+    const roots = await prisma.discipline.findMany({
+      where: { parentId: null },
+      orderBy: { sortOrder: "asc" },
+      include: {
+        children: {
+          orderBy: { sortOrder: "asc" }
+        }
+      }
+    });
+
+    return roots.map((discipline) => ({
+      ...toDiscipline(discipline),
+      children: discipline.children.map(toDiscipline)
+    }));
   },
 
   async getDisciplineBySlug(slug: string): Promise<Discipline | null> {
-    return disciplines.find((discipline) => discipline.slug === slug) ?? null;
+    const discipline = await prisma.discipline.findUnique({ where: { slug } });
+    return discipline ? toDiscipline(discipline) : null;
   },
 
   async listTags(): Promise<Tag[]> {
-    return [...tags].sort((a, b) => a.name.localeCompare(b.name));
+    const tags = await prisma.tag.findMany({
+      orderBy: { name: "asc" }
+    });
+    return tags.map(toTag);
   },
 
   async listTopics(query: TopicQuery = {}): Promise<TopicListItem[]> {
-    let result = topics.filter((topic) => topic.status === "PUBLISHED");
+    const where: Prisma.TopicWhereInput = {
+      status: "PUBLISHED"
+    };
 
     if (query.disciplineSlug) {
-      const discipline = disciplines.find((item) => item.slug === query.disciplineSlug);
-      if (discipline) {
-        const ids = getDescendantDisciplineIds(discipline.id);
-        result = result.filter((topic) => ids.has(topic.primaryDisciplineId));
+      const discipline = await prisma.discipline.findUnique({
+        where: { slug: query.disciplineSlug }
+      });
+
+      if (!discipline) {
+        return [];
       }
+
+      where.primaryDisciplineId = {
+        in: await getDescendantDisciplineIds(discipline.id)
+      };
     }
 
     if (query.tagSlug) {
-      const tag = tags.find((item) => item.slug === query.tagSlug);
-      if (tag) {
-        result = result.filter((topic) => topic.tagIds.includes(tag.id));
-      }
+      where.tags = {
+        some: {
+          tag: {
+            slug: query.tagSlug
+          }
+        }
+      };
     }
 
     if (query.q) {
-      const normalized = query.q.toLowerCase();
-      result = result.filter(
-        (topic) =>
-          topic.title.toLowerCase().includes(normalized) ||
-          topic.body.toLowerCase().includes(normalized) ||
-          topic.paperTitle?.toLowerCase().includes(normalized)
-      );
+      where.OR = [
+        { title: { contains: query.q, mode: "insensitive" } },
+        { body: { contains: query.q, mode: "insensitive" } },
+        { paperTitle: { contains: query.q, mode: "insensitive" } }
+      ];
     }
 
-    const related = result.map(getTopicRelations);
+    const orderBy: Prisma.TopicOrderByWithRelationInput =
+      query.sort === "popular"
+        ? { viewCount: "desc" }
+        : query.sort === "latest"
+          ? { createdAt: "desc" }
+          : { lastActivityAt: "desc" };
 
-    if (query.sort === "popular") {
-      return related.sort((a, b) => b.viewCount - a.viewCount);
-    }
+    const topics = await prisma.topic.findMany({
+      where,
+      orderBy,
+      include: includeTopicRelations()
+    });
 
-    if (query.sort === "latest") {
-      return related.sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-    }
-
-    return related.sort(
-      (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime()
-    );
+    return topics.map((topic) => toTopicListItem(topic as TopicWithRelations));
   },
 
   async listRandomTopics(limit = 4): Promise<TopicListItem[]> {
-    const shuffled = [...topics]
-      .filter((topic) => topic.status === "PUBLISHED")
+    const topics = await prisma.topic.findMany({
+      where: { status: "PUBLISHED" },
+      orderBy: { lastActivityAt: "desc" },
+      take: 50,
+      include: includeTopicRelations()
+    });
+
+    return topics
       .sort(() => Math.random() - 0.5)
-      .slice(0, limit);
-    return shuffled.map(getTopicRelations);
+      .slice(0, limit)
+      .map((topic) => toTopicListItem(topic as TopicWithRelations));
   },
 
   async getTopicDetail(topicId: string): Promise<TopicDetail | null> {
-    const topic = topics.find((item) => item.id === topicId && item.status === "PUBLISHED");
+    await prisma.topic.updateMany({
+      where: { id: topicId, status: "PUBLISHED" },
+      data: { viewCount: { increment: 1 } }
+    });
+
+    const topic = await prisma.topic.findFirst({
+      where: { id: topicId, status: "PUBLISHED" },
+      include: {
+        ...includeTopicRelations(),
+        replies: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            author: true
+          }
+        }
+      }
+    });
+
     if (!topic) {
       return null;
     }
 
-    topic.viewCount += 1;
+    const detail = topic as TopicDetailWithRelations;
 
-    const topicReplies = replies
-      .filter((reply) => reply.topicId === topic.id)
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-      .map((reply) => {
-        const author = users.find((user) => user.id === reply.authorId);
-        if (!author) {
+    return {
+      ...toTopicListItem(detail),
+      replies: detail.replies.map((reply) => {
+        const mapped = toReply(reply);
+        if (!mapped.author) {
           throw new Error(`Invalid reply author for ${reply.id}`);
         }
 
         return {
-          ...reply,
-          author: publicUser(author)
+          ...mapped,
+          author: mapped.author
         };
-      });
-
-    return {
-      ...getTopicRelations(topic),
-      replies: topicReplies
+      })
     };
   },
 
   async createTopic(input: CreateTopicInput & { authorId: string }): Promise<TopicListItem> {
-    const now = new Date().toISOString();
-    const topic: Topic = {
-      id: id("topic"),
-      title: input.title,
-      type: input.type,
-      body: input.body,
-      paperTitle: input.paperTitle,
-      paperUrl: input.paperUrl,
-      authorId: input.authorId,
-      primaryDisciplineId: input.primaryDisciplineId,
-      status: "PUBLISHED",
-      tagIds: input.tagIds,
-      viewCount: 0,
-      createdAt: now,
-      updatedAt: now,
-      lastActivityAt: now
-    };
+    const topic = await prisma.topic.create({
+      data: {
+        title: input.title,
+        type: input.type,
+        body: input.body,
+        paperTitle: input.paperTitle || null,
+        paperUrl: input.paperUrl || null,
+        authorId: input.authorId,
+        primaryDisciplineId: input.primaryDisciplineId,
+        tags: {
+          create: input.tagIds.map((tagId) => ({
+            tag: {
+              connect: { id: tagId }
+            }
+          }))
+        }
+      },
+      include: includeTopicRelations()
+    });
 
-    topics.unshift(topic);
-    return getTopicRelations(topic);
+    return toTopicListItem(topic as TopicWithRelations);
+  },
+
+  async deleteTopic(topicId: string, userId: string): Promise<boolean> {
+    const topic = await prisma.topic.findUnique({
+      where: { id: topicId },
+      select: { authorId: true, status: true }
+    });
+
+    if (!topic || topic.status !== "PUBLISHED") {
+      return false;
+    }
+
+    if (topic.authorId !== userId) {
+      throw new Error("FORBIDDEN");
+    }
+
+    await prisma.topic.update({
+      where: { id: topicId },
+      data: { status: "HIDDEN" }
+    });
+
+    return true;
   },
 
   async createReply(input: CreateReplyInput): Promise<Reply & { author: PublicUser }> {
-    const now = new Date().toISOString();
-    const reply: Reply = {
-      id: id("reply"),
-      topicId: input.topicId,
-      authorId: input.authorId,
-      body: input.body,
-      parentReplyId: input.parentReplyId,
-      createdAt: now,
-      updatedAt: now
-    };
+    const reply = await prisma.reply.create({
+      data: {
+        topicId: input.topicId,
+        authorId: input.authorId,
+        body: input.body,
+        parentReplyId: input.parentReplyId || null
+      },
+      include: {
+        author: true
+      }
+    });
 
-    replies.push(reply);
+    await prisma.topic.update({
+      where: { id: input.topicId },
+      data: { lastActivityAt: new Date() }
+    });
 
-    const topic = topics.find((item) => item.id === input.topicId);
-    if (topic) {
-      topic.lastActivityAt = now;
-      topic.updatedAt = now;
-    }
-
-    const author = users.find((user) => user.id === reply.authorId);
-    if (!author) {
+    const mapped = toReply(reply);
+    if (!mapped.author) {
       throw new Error("Invalid reply author");
     }
 
     return {
-      ...reply,
-      author: publicUser(author)
+      ...mapped,
+      author: mapped.author
+    };
+  },
+
+  async deleteReply(
+    topicId: string,
+    replyId: string,
+    userId: string
+  ): Promise<Reply & { author: PublicUser } | null> {
+    const reply = await prisma.reply.findFirst({
+      where: { id: replyId, topicId },
+      include: {
+        author: true
+      }
+    });
+
+    if (!reply) {
+      return null;
+    }
+
+    if (reply.authorId !== userId) {
+      throw new Error("FORBIDDEN");
+    }
+
+    const updated = await prisma.reply.update({
+      where: { id: replyId },
+      data: { deletedAt: new Date() },
+      include: { author: true }
+    });
+
+    await prisma.topic.update({
+      where: { id: topicId },
+      data: { lastActivityAt: new Date() }
+    });
+
+    const mapped = toReply(updated);
+    if (!mapped.author) {
+      throw new Error("Invalid reply author");
+    }
+
+    return {
+      ...mapped,
+      author: mapped.author
     };
   },
 
   async getAIGuide(topicId: string): Promise<AIGuide | null> {
-    return aiGuides.find((guide) => guide.topicId === topicId) ?? null;
+    const guide = await prisma.aIGuide.findUnique({
+      where: { topicId }
+    });
+    return toAIGuide(guide) ?? null;
   },
 
   async upsertAIGuide(topicId: string, content: string, model: string): Promise<AIGuide> {
-    const now = new Date().toISOString();
-    const existing = aiGuides.find((guide) => guide.topicId === topicId);
+    const guide = await prisma.aIGuide.upsert({
+      where: { topicId },
+      update: {
+        content,
+        model,
+        status: "COMPLETED" satisfies AIJobStatus
+      },
+      create: {
+        topicId,
+        content,
+        model,
+        status: "COMPLETED"
+      }
+    });
 
-    if (existing) {
-      existing.content = content;
-      existing.model = model;
-      existing.status = "COMPLETED";
-      existing.updatedAt = now;
-      return existing;
+    const mapped = toAIGuide(guide);
+    if (!mapped) {
+      throw new Error("Failed to map AI guide");
     }
 
-    const guide: AIGuide = {
-      id: id("guide"),
-      topicId,
-      content,
-      model,
-      status: "COMPLETED",
-      createdAt: now,
-      updatedAt: now
-    };
-
-    aiGuides.push(guide);
-    return guide;
+    return mapped;
   },
 
   async ensureTags(names: string[], disciplineId?: string): Promise<Tag[]> {
-    const created: Tag[] = [];
+    const result: Tag[] = [];
 
-    names.forEach((name) => {
-      const normalized = name.trim();
-      if (!normalized) {
-        return;
+    for (const rawName of names) {
+      const name = rawName.trim();
+      if (!name) {
+        continue;
       }
 
-      const existing = tags.find((tag) => tag.name.toLowerCase() === normalized.toLowerCase());
+      const existing = await prisma.tag.findFirst({
+        where: {
+          name: {
+            equals: name,
+            mode: "insensitive"
+          }
+        }
+      });
+
       if (existing) {
-        created.push(existing);
-        return;
+        result.push(toTag(existing));
+        continue;
       }
 
-      const tag: Tag = {
-        id: id("tag"),
-        name: normalized,
-        slug: slugify(normalized) || id("tag-slug"),
-        disciplineId
-      };
+      const tag = await prisma.tag.create({
+        data: {
+          name,
+          slug: await uniqueTagSlug(name),
+          disciplineId: disciplineId || null
+        }
+      });
 
-      tags.push(tag);
-      created.push(tag);
-    });
+      result.push(toTag(tag));
+    }
 
-    return created;
+    return result;
   }
 };

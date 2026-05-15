@@ -8,7 +8,7 @@ export default async function NewTopicPage() {
   const user = await getCurrentUser();
 
   if (!user) {
-    redirect("/login");
+    redirect("/login?next=/topics/new");
   }
 
   const [disciplines, tags] = await Promise.all([

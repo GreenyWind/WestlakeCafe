@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { aiService } from "@/lib/ai-service";
+import { publicAIErrorMessage } from "@/lib/ai-errors";
 
 type RouteParams = Promise<{ id: string }>;
 
@@ -19,6 +20,9 @@ export async function POST(request: Request, { params }: { params: RouteParams }
       return NextResponse.json({ message: "Topic 不存在。" }, { status: 404 });
     }
 
-    return NextResponse.json({ message: "整理草稿失败。" }, { status: 500 });
+    return NextResponse.json(
+      { message: publicAIErrorMessage(error, "整理草稿失败。") },
+      { status: 500 }
+    );
   }
 }

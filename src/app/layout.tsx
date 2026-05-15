@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, LogIn, PenLine, UserPlus } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import "@/app/globals.css";
+import { AuthNav } from "@/components/auth-nav";
 import { getCurrentUser } from "@/lib/session";
-import { LogoutButton } from "@/components/logout-button";
 
 export const metadata: Metadata = {
   title: "Campus Topic Lab",
@@ -29,30 +29,7 @@ export default async function RootLayout({
               <span>Campus Topic Lab</span>
             </Link>
             <nav className="nav-actions" aria-label="主导航">
-              <Link className="button ghost" href="/topics">
-                浏览 topics
-              </Link>
-              <Link className="button secondary" href="/topics/new">
-                <PenLine size={16} aria-hidden="true" />
-                创建 topic
-              </Link>
-              {user ? (
-                <>
-                  <span className="chip">{user.name}</span>
-                  <LogoutButton />
-                </>
-              ) : (
-                <>
-                  <Link className="button secondary" href="/login">
-                    <LogIn size={16} aria-hidden="true" />
-                    登录
-                  </Link>
-                  <Link className="button" href="/register">
-                    <UserPlus size={16} aria-hidden="true" />
-                    注册
-                  </Link>
-                </>
-              )}
+              <AuthNav initialUser={user} />
             </nav>
           </header>
           {children}

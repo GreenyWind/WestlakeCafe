@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { repository } from "@/lib/repository";
+import { requireCurrentUser } from "@/lib/session";
 
 type RouteParams = Promise<{ id: string }>;
 
@@ -12,4 +13,32 @@ export async function GET(_request: Request, { params }: { params: RouteParams }
   }
 
   return NextResponse.json(topic);
+}
+
+export async function DELETE(_request: Request, { params }: { params: RouteParams }) {
+  let user;
+
+  try {
+    user = await requireCurrentUser();
+  } catch {
+    return NextResponse.json({ message: "请先登录。" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  try {
+    const deleted = await repository.deleteTopic(id, user.id);
+
+    if (!deleted) {
+      return NextResponse.json({ message: "Topic 不存在。" }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    if (error instanceof Error && error.message === "FORBIDDEN") {
+      return NextResponse.json({ message: "你没有权限删除这个 topic。" }, { status: 403 });
+    }
+
+    return NextResponse.json({ message: "删除 topic 失败。" }, { status: 500 });
+  }
 }
