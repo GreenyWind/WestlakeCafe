@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { repository } from "@/lib/repository";
 import { setSessionCookie } from "@/lib/session";
+import { normalizeIdentity, normalizeSchools } from "@/lib/user-profile-options";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const name = String(body?.name ?? "").trim();
   const email = String(body?.email ?? "").trim();
   const password = String(body?.password ?? "");
+  const identity = normalizeIdentity(body?.identity);
+  const schools = normalizeSchools(body?.schools);
   const department = String(body?.department ?? "").trim();
   const researchField = String(body?.researchField ?? "").trim();
 
@@ -19,6 +22,8 @@ export async function POST(request: Request) {
       name,
       email,
       password,
+      identity,
+      schools,
       department,
       researchField
     });

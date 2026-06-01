@@ -14,7 +14,7 @@ export default async function HomePage() {
       <section className="hero">
         <div className="hero-copy">
           <p className="eyebrow">校内跨领域学术讨论</p>
-          <h1>Campus Topic Lab</h1>
+          <h1>WestlakeCafe</h1>
           <p className="lead">
             以 topic 为单位组织论文、问题和研究直觉，让博士生能更低成本地进入陌生领域的讨论。
           </p>

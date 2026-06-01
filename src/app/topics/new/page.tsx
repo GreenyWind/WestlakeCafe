@@ -11,9 +11,10 @@ export default async function NewTopicPage() {
     redirect("/login?next=/topics/new");
   }
 
-  const [disciplines, tags] = await Promise.all([
+  const [disciplines, tags, preference] = await Promise.all([
     repository.listDisciplines(),
-    repository.listTags({ includePending: true, userId: user.id })
+    repository.listTags({ includePending: true, userId: user.id }),
+    repository.getTopicDraftPreference(user.id)
   ]);
 
   return (
@@ -29,7 +30,7 @@ export default async function NewTopicPage() {
             返回列表
           </Link>
         </div>
-        <TopicForm disciplines={disciplines} tags={tags} />
+        <TopicForm disciplines={disciplines} tags={tags} initialPreference={preference} />
       </section>
     </main>
   );

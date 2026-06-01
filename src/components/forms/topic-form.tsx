@@ -3,7 +3,7 @@
 import { Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import type { Discipline, NewDisciplineInput, NewTagInput, Tag, TopicType } from "@/lib/types";
+import type { Discipline, NewDisciplineInput, NewTagInput, Tag, TopicDraftPreference, TopicType } from "@/lib/types";
 
 type DisciplineTree = Discipline & { children: Discipline[] };
 
@@ -39,16 +39,32 @@ function makeDraftDiscipline(parentId = "") {
 
 export function TopicForm({
   disciplines,
-  tags
+  tags,
+  initialPreference
 }: {
   disciplines: DisciplineTree[];
   tags: Tag[];
+  initialPreference?: TopicDraftPreference;
 }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [selectedDisciplineIds, setSelectedDisciplineIds] = useState<string[]>([]);
+  const initialTagIds = useMemo(
+    () => unique((initialPreference?.tagIds ?? []).filter((id) => tags.some((tag) => tag.id === id))),
+    [initialPreference?.tagIds, tags]
+  );
+  const initialDisciplineIds = useMemo(() => {
+    const leafIds = new Set(disciplines.flatMap((discipline) => discipline.children.map((child) => child.id)));
+    const restoredDisciplineIds = (initialPreference?.disciplineIds ?? []).filter((id) => leafIds.has(id));
+    const restoredTagDisciplineIds = tags
+      .filter((tag) => initialTagIds.includes(tag.id))
+      .flatMap((tag) => tag.disciplineIds ?? [])
+      .filter((id) => leafIds.has(id));
+
+    return unique([...restoredDisciplineIds, ...restoredTagDisciplineIds]);
+  }, [disciplines, initialPreference?.disciplineIds, initialTagIds, tags]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialTagIds);
+  const [selectedDisciplineIds, setSelectedDisciplineIds] = useState<string[]>(initialDisciplineIds);
   const [draftTags, setDraftTags] = useState<DraftTag[]>([]);
 
   const rootDisciplines = disciplines;

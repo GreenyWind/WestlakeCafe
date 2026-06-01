@@ -111,5 +111,11 @@ export async function POST(request: Request) {
     authorId: user.id
   });
 
+  await repository.saveTopicDraftPreference({
+    userId: user.id,
+    tagIds,
+    disciplineIds
+  });
+
   return NextResponse.json(topic, { status: 201 });
 }

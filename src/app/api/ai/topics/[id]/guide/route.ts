@@ -11,7 +11,7 @@ export async function POST(request: Request, { params }: { params: RouteParams }
   const body = await request.json().catch(() => null);
 
   try {
-    const [topic, user] = await Promise.all([repository.getTopicDetail(id), getCurrentUser()]);
+    const [topic, user] = await Promise.all([repository.getTopicDetail(id, { incrementView: false }), getCurrentUser()]);
 
     if (!topic) {
       return NextResponse.json({ message: "Topic 不存在。" }, { status: 404 });
@@ -20,6 +20,77 @@ export async function POST(request: Request, { params }: { params: RouteParams }
     const requestedPersist = body?.persist !== false;
     const canPersist = Boolean(user && user.id === topic.authorId);
     const persist = requestedPersist && canPersist;
+    const wantsStream = Boolean(body?.stream);
+
+    if (wantsStream) {
+      const result = await aiService.streamTopicGuide(id);
+      const encoder = new TextEncoder();
+
+      const stream = new ReadableStream({
+        async start(controller) {
+          function send(event: string, data: unknown) {
+            controller.enqueue(
+              encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+            );
+          }
+
+          let content = "";
+
+          try {
+            send("meta", {
+              temporary: !persist,
+              status: "PENDING"
+            });
+
+            for await (const delta of result.stream) {
+              if (delta) {
+                content += delta;
+                send("delta", { delta });
+              }
+            }
+
+            if (!content.trim()) {
+              throw new Error("AI_GUIDE_EMPTY_RESPONSE");
+            }
+
+            const guide = persist
+              ? await repository.upsertAIGuide(id, content, result.model)
+              : {
+                  id: "temporary",
+                  topicId: id,
+                  content,
+                  model: result.model,
+                  status: "COMPLETED" as const,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                };
+
+            send("done", {
+              temporary: !persist,
+              status: guide.status,
+              model: guide.model,
+              updatedAt: guide.updatedAt
+            });
+          } catch (error) {
+            if (persist) {
+              await aiService.markTopicGuideFailed(id).catch(() => undefined);
+            }
+
+            send("error", { message: publicAIErrorMessage(error, "生成导读失败。") });
+          } finally {
+            controller.close();
+          }
+        }
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive"
+        }
+      });
+    }
 
     return NextResponse.json({
       ...(await aiService.generateTopicGuide(id, { persist })),

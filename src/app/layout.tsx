@@ -3,10 +3,11 @@ import Link from "next/link";
 import { BookOpen } from "lucide-react";
 import "@/app/globals.css";
 import { AuthNav } from "@/components/auth-nav";
+import { SiteSearch } from "@/components/site-search";
 import { getCurrentUser } from "@/lib/session";
 
 export const metadata: Metadata = {
-  title: "Campus Topic Lab",
+  title: "WestlakeCafe",
   description: "校内跨领域学术 topic 讨论平台 MVP"
 };
 
@@ -26,8 +27,9 @@ export default async function RootLayout({
               <span className="brand-mark">
                 <BookOpen size={18} aria-hidden="true" />
               </span>
-              <span>Campus Topic Lab</span>
+              <span>WestlakeCafe</span>
             </Link>
+            <SiteSearch />
             <nav className="nav-actions" aria-label="主导航">
               <AuthNav initialUser={user} />
             </nav>

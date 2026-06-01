@@ -57,21 +57,6 @@ export function AITools({
   const [isPending, startTransition] = useTransition();
   const pending = isPending || Boolean(pendingAction);
 
-  async function post(path: string, body: unknown) {
-    const response = await fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => null);
-      throw new Error(data?.message ?? "AI 工具暂时不可用。");
-    }
-
-    return response.json();
-  }
-
   function runAI<T>(action: PendingAction, task: () => Promise<T>) {
     setError("");
     setPendingAction(action);
@@ -92,6 +77,7 @@ export function AITools({
     handlers: {
       onMeta?: (data: unknown) => void;
       onDelta: (delta: string) => void;
+      onDone?: (data: unknown) => void;
     }
   ) {
     const response = await fetch(path, {
@@ -141,6 +127,7 @@ export function AITools({
     handlers: {
       onMeta?: (data: unknown) => void;
       onDelta: (delta: string) => void;
+      onDone?: (data: unknown) => void;
     }
   ) {
     const lines = eventText.split(/\r?\n/);
@@ -170,16 +157,58 @@ export function AITools({
     if (event === "error") {
       throw new Error(data.message ?? "AI 工具暂时不可用。");
     }
+
+    if (event === "done") {
+      handlers.onDone?.(data);
+    }
   }
 
   function generateGuide(persist: boolean) {
     runAI("guide", async () => {
+      let streamedGuide = "";
+
       setGuideStatus("PENDING");
-      const data = await post(`/api/ai/topics/${topicId}/guide`, { persist });
-      setGuide(data.content);
-      setGuideStatus(data.status ?? "COMPLETED");
-      setTemporaryGuide(Boolean(data.temporary));
-      if (!data.temporary) {
+      setGuide("");
+      setGuideExpanded(true);
+
+      try {
+        await postStream(
+          `/api/ai/topics/${topicId}/guide`,
+          { persist, stream: true },
+          {
+            onMeta(data) {
+              const value = data as { temporary?: unknown };
+              setTemporaryGuide(Boolean(value.temporary));
+            },
+            onDelta(delta) {
+              streamedGuide += delta;
+              setGuide(streamedGuide);
+            },
+            onDone(data) {
+              const value = data as { temporary?: unknown };
+              const isTemporary = Boolean(value.temporary);
+              setGuideStatus("COMPLETED");
+              setTemporaryGuide(isTemporary);
+
+              if (!isTemporary) {
+                setStaleGuide(false);
+                setNewReplyCount(0);
+              }
+            }
+          }
+        );
+      } catch (caught) {
+        setGuideStatus("FAILED");
+        throw caught;
+      }
+
+      if (!streamedGuide.trim()) {
+        setGuideStatus("FAILED");
+        throw new Error("AI 没有返回内容，请稍后再试。");
+      }
+
+      setGuideStatus("COMPLETED");
+      if (persist) {
         setStaleGuide(false);
         setNewReplyCount(0);
       }

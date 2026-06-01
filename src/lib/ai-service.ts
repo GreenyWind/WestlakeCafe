@@ -917,6 +917,27 @@ export const aiService = {
     return repository.upsertAIGuide(topicId, content, modelLabelFor(guideModel));
   },
 
+  async streamTopicGuide(topicId: string) {
+    const topic = await repository.getTopicDetail(topicId, { incrementView: false });
+    if (!topic) {
+      throw new Error("TOPIC_NOT_FOUND");
+    }
+
+    const guideModel = CHAT_QUALITY_MODEL;
+    const stream = isRealProvider()
+      ? streamModel(systemGuidePrompt(), guidePrompt(topic), { maxTokens: 1600, model: guideModel })
+      : (async function* () {
+          for (const chunk of chunkText(mockGuide(topic))) {
+            yield chunk;
+          }
+        })();
+
+    return {
+      model: modelLabelFor(guideModel),
+      stream
+    };
+  },
+
   async markTopicGuideFailed(topicId: string) {
     await repository.markAIGuideFailed(topicId);
   },

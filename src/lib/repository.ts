@@ -24,6 +24,7 @@ import type {
   Tag,
   Topic,
   TopicDetail,
+  TopicDraftPreference,
   TopicListItem,
   User
 } from "@/lib/types";
@@ -58,6 +59,8 @@ function toPublicUser(user: PrismaUser): PublicUser {
   return {
     ...rest,
     school: rest.school ?? undefined,
+    schools: rest.schools,
+    identity: rest.identity ?? undefined,
     department: rest.department ?? undefined,
     researchField: rest.researchField ?? undefined,
     createdAt: toDateString(rest.createdAt),
@@ -278,6 +281,8 @@ export const repository = {
     name: string;
     email: string;
     password: string;
+    identity?: string;
+    schools?: string[];
     department?: string;
     researchField?: string;
   }): Promise<PublicUser> {
@@ -292,6 +297,8 @@ export const repository = {
         email: input.email.toLowerCase(),
         passwordHash: hashPassword(input.password),
         school: "示例大学",
+        schools: input.schools ?? [],
+        identity: input.identity || null,
         department: input.department || null,
         researchField: input.researchField || null
       }
@@ -406,7 +413,19 @@ export const repository = {
         OR: [
           { title: { contains: query.q, mode: "insensitive" } },
           { body: { contains: query.q, mode: "insensitive" } },
-          { paperTitle: { contains: query.q, mode: "insensitive" } }
+          { paperTitle: { contains: query.q, mode: "insensitive" } },
+          {
+            tags: {
+              some: {
+                tag: {
+                  name: {
+                    contains: query.q,
+                    mode: "insensitive"
+                  }
+                }
+              }
+            }
+          }
         ]
       });
     }
@@ -579,6 +598,44 @@ export const repository = {
     });
 
     return toTopicListItem(topic as TopicWithRelations);
+  },
+
+  async getTopicDraftPreference(userId: string): Promise<TopicDraftPreference> {
+    const preference = await prisma.userTopicPreference.findUnique({
+      where: { userId }
+    });
+
+    return {
+      tagIds: preference?.tagIds ?? [],
+      disciplineIds: preference?.disciplineIds ?? []
+    };
+  },
+
+  async saveTopicDraftPreference(input: {
+    userId: string;
+    tagIds: string[];
+    disciplineIds: string[];
+  }): Promise<TopicDraftPreference> {
+    const tagIds = uniqueIds(input.tagIds);
+    const disciplineIds = uniqueIds(input.disciplineIds);
+
+    const preference = await prisma.userTopicPreference.upsert({
+      where: { userId: input.userId },
+      update: {
+        tagIds,
+        disciplineIds
+      },
+      create: {
+        userId: input.userId,
+        tagIds,
+        disciplineIds
+      }
+    });
+
+    return {
+      tagIds: preference.tagIds,
+      disciplineIds: preference.disciplineIds
+    };
   },
 
   async deleteTopic(topicId: string, userId: string): Promise<boolean> {

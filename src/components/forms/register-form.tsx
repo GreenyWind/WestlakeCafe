@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { IDENTITY_OPTIONS, SCHOOL_OPTIONS } from "@/lib/user-profile-options";
 
 export function RegisterForm({ nextPath = "/" }: { nextPath?: string }) {
   const router = useRouter();
@@ -15,6 +16,7 @@ export function RegisterForm({ nextPath = "/" }: { nextPath?: string }) {
         event.preventDefault();
         setError("");
         const form = new FormData(event.currentTarget);
+        const schools = form.getAll("schools");
 
         startTransition(async () => {
           const response = await fetch("/api/auth/register", {
@@ -24,7 +26,8 @@ export function RegisterForm({ nextPath = "/" }: { nextPath?: string }) {
               name: form.get("name"),
               email: form.get("email"),
               password: form.get("password"),
-              department: form.get("department"),
+              identity: form.get("identity"),
+              schools,
               researchField: form.get("researchField")
             })
           });
@@ -58,8 +61,25 @@ export function RegisterForm({ nextPath = "/" }: { nextPath?: string }) {
         <input className="input" id="password" name="password" minLength={6} type="password" required />
       </div>
       <div className="field">
-        <label htmlFor="department">院系</label>
-        <input className="input" id="department" name="department" />
+        <label htmlFor="identity">身份</label>
+        <select className="select" id="identity" name="identity" defaultValue="不设置">
+          {IDENTITY_OPTIONS.map((identity) => (
+            <option key={identity} value={identity}>
+              {identity}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label>学院</label>
+        <div className="choice-grid">
+          {SCHOOL_OPTIONS.map((school) => (
+            <label className="chip selectable-chip" key={school}>
+              <input name="schools" type="checkbox" value={school} />
+              {school}
+            </label>
+          ))}
+        </div>
       </div>
       <div className="field">
         <label htmlFor="researchField">研究方向</label>

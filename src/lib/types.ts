@@ -12,6 +12,8 @@ export type User = {
   email: string;
   passwordHash: string;
   school?: string;
+  schools?: string[];
+  identity?: string;
   department?: string;
   researchField?: string;
   role: UserRole;
@@ -111,6 +113,11 @@ export type CreateTopicInput = {
   primaryDisciplineId: string;
   disciplineIds: string[];
   tagIds: string[];
+};
+
+export type TopicDraftPreference = {
+  tagIds: string[];
+  disciplineIds: string[];
 };
 
 export type NewDisciplineInput = {

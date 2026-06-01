@@ -13,6 +13,8 @@ model User {
   email         String   @unique
   passwordHash  String
   school        String?
+  schools       String[] @default([])
+  identity      String?
   department    String?
   researchField String?
   role          UserRole @default(STUDENT)
@@ -23,8 +25,18 @@ model User {
   replies       Reply[]
   aiSessions    AIChatSession[]
   aiDrafts      AIDraft[]
+  topicPreference UserTopicPreference?
   createdDisciplines Discipline[] @relation("DisciplineCreator")
   createdTags        Tag[]        @relation("TagCreator")
+}
+
+model UserTopicPreference {
+  userId        String   @id
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tagIds        String[] @default([])
+  disciplineIds String[] @default([])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model Discipline {
