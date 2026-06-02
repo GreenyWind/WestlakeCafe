@@ -26,6 +26,7 @@ import type {
   TopicDetail,
   TopicDraftPreference,
   TopicListItem,
+  TopicSearchSuggestion,
   User
 } from "@/lib/types";
 import { slugify } from "@/lib/utils";
@@ -446,6 +447,62 @@ export const repository = {
     });
 
     return topics.map((topic) => toTopicListItem(topic as TopicWithRelations));
+  },
+
+  async searchTopicSuggestions(query: string, limit = 6): Promise<TopicSearchSuggestion[]> {
+    const q = query.trim();
+
+    if (q.length < 2) {
+      return [];
+    }
+
+    const take = Math.min(Math.max(limit, 1), 8);
+    const topics = await prisma.topic.findMany({
+      where: {
+        status: "PUBLISHED",
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { paperTitle: { contains: q, mode: "insensitive" } },
+          {
+            tags: {
+              some: {
+                tag: {
+                  name: {
+                    contains: q,
+                    mode: "insensitive"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      orderBy: { lastActivityAt: "desc" },
+      take,
+      include: {
+        tags: {
+          include: {
+            tag: true
+          }
+        }
+      }
+    });
+
+    return topics.map((topic) => {
+      const tagText = topic.tags.map((item) => item.tag.name).join(" / ");
+      const subtitle = topic.paperTitle
+        ? `论文：${topic.paperTitle}`
+        : tagText
+          ? `tag：${tagText}`
+          : "topic";
+
+      return {
+        id: topic.id,
+        title: topic.title,
+        subtitle,
+        href: `/topics/${topic.id}`
+      };
+    });
   },
 
   async listUnclassifiedTopics(parentDisciplineSlug: string): Promise<TopicListItem[]> {

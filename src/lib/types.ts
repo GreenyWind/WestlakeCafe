@@ -120,6 +120,13 @@ export type TopicDraftPreference = {
   disciplineIds: string[];
 };
 
+export type TopicSearchSuggestion = {
+  id: string;
+  title: string;
+  subtitle: string;
+  href: string;
+};
+
 export type NewDisciplineInput = {
   name: string;
   parentId: string;
