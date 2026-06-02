@@ -5,6 +5,7 @@ import { AITools } from "@/components/ai-tools";
 import { DeleteReplyButton } from "@/components/delete-reply-button";
 import { DeleteTopicButton } from "@/components/delete-topic-button";
 import { ReplyForm } from "@/components/forms/reply-form";
+import { ReplyTargetButton } from "@/components/reply-target-button";
 import { repository } from "@/lib/repository";
 import { getCurrentUser } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
@@ -27,6 +28,30 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
   }
 
   const canDeleteTopic = user && user.id === topic.authorId;
+  const replyFloorById = new Map(topic.replies.map((reply, index) => [reply.id, index + 1]));
+  const replyById = new Map(topic.replies.map((reply) => [reply.id, reply]));
+  const childRepliesByParentId = new Map<string, typeof topic.replies>();
+
+  topic.replies.forEach((reply) => {
+    if (!reply.parentReplyId) {
+      return;
+    }
+
+    const siblings = childRepliesByParentId.get(reply.parentReplyId) ?? [];
+    siblings.push(reply);
+    childRepliesByParentId.set(reply.parentReplyId, siblings);
+  });
+
+  const hotReplyTargets = Array.from(childRepliesByParentId.entries())
+    .map(([replyId, children]) => ({
+      replyId,
+      floor: replyFloorById.get(replyId) ?? 0,
+      reply: replyById.get(replyId),
+      count: children.filter((reply) => !reply.deletedAt).length
+    }))
+    .filter((item) => item.floor > 0 && item.count > 0 && item.reply && !item.reply.deletedAt)
+    .sort((a, b) => b.count - a.count || a.floor - b.floor)
+    .slice(0, 3);
 
   return (
     <main className="page">
@@ -83,19 +108,35 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
             <h2>
               <MessageSquare size={20} aria-hidden="true" /> 讨论回复
             </h2>
+            {hotReplyTargets.length > 0 ? (
+              <div className="reply-focus-nav">
+                <strong>讨论焦点</strong>
+                <div className="topic-tags">
+                  {hotReplyTargets.map((item) => (
+                    <a className="chip chip-button" href={`#reply-${item.floor}`} key={item.replyId}>
+                      #{item.floor} 被回复 {item.count} 次
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {topic.replies.length > 0 ? (
               topic.replies.map((reply, index) => {
+                const floor = index + 1;
                 const isDeleted = Boolean(reply.deletedAt);
+                const parentReply = reply.parentReplyId ? replyById.get(reply.parentReplyId) : null;
+                const parentFloor = reply.parentReplyId ? replyFloorById.get(reply.parentReplyId) : null;
+                const childReplies = (childRepliesByParentId.get(reply.id) ?? []).filter((child) => !child.deletedAt);
                 const canDeleteReply =
                   user &&
                   !isDeleted &&
                   user.id === reply.authorId;
 
                 return (
-                  <article className="reply" key={reply.id}>
+                  <article className="reply" id={`reply-${floor}`} key={reply.id}>
                     <div className="reply-header">
                       <span>
-                        #{index + 1}
+                        #{floor}
                         {isDeleted
                           ? " · 回复已删除"
                           : ` · ${reply.author.name}${
@@ -109,11 +150,45 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
                         ) : null}
                       </span>
                     </div>
+                    {!isDeleted && parentReply && parentFloor ? (
+                      <a className="reply-reference" href={`#reply-${parentFloor}`}>
+                        回复 #{parentFloor} · {parentReply.deletedAt ? "原回复已删除" : `${parentReply.author.name}：${parentReply.body.slice(0, 72)}`}
+                      </a>
+                    ) : null}
                     {isDeleted ? (
                       <p className="body-text muted">回复已删除</p>
                     ) : (
-                      <p className="body-text">{reply.body}</p>
+                      <>
+                        <p className="body-text">{reply.body}</p>
+                        <div className="reply-actions">
+                          <ReplyTargetButton
+                            topicId={topic.id}
+                            replyId={reply.id}
+                            floor={floor}
+                            authorName={reply.author.name}
+                            preview={reply.body.slice(0, 90)}
+                          />
+                        </div>
+                      </>
                     )}
+                    {childReplies.length > 0 ? (
+                      <div className="reply-backlinks">
+                        <span>被回复：</span>
+                        {childReplies.map((child) => {
+                          const childFloor = replyFloorById.get(child.id);
+
+                          if (!childFloor) {
+                            return null;
+                          }
+
+                          return (
+                            <a href={`#reply-${childFloor}`} key={child.id}>
+                              #{childFloor}
+                            </a>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </article>
                 );
               })

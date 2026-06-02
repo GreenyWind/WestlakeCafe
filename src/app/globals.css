@@ -773,6 +773,13 @@ select:focus {
 
 .reply {
   padding: 14px;
+  scroll-margin-top: 96px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.reply:target {
+  border-color: rgba(184, 92, 56, 0.65);
+  background: #fffaf6;
 }
 
 .reply-header {
@@ -782,6 +789,77 @@ select:focus {
   margin-bottom: 8px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.reply-reference,
+.reply-target {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfa;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.reply-reference {
+  border-left: 3px solid var(--primary);
+}
+
+.reply-target {
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0;
+}
+
+.reply-target div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.reply-target span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reply-actions,
+.reply-backlinks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reply-backlinks {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.reply-backlinks a {
+  color: var(--primary-dark);
+  font-weight: 720;
+}
+
+.reply-focus-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfa;
+}
+
+.reply-focus-nav strong {
+  font-size: 14px;
 }
 
 .auth-page {

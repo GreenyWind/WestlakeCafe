@@ -1,12 +1,20 @@
 "use client";
 
-import { Send } from "lucide-react";
+import { Send, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+
+type ReplyTarget = {
+  id: string;
+  floor: number;
+  authorName: string;
+  preview: string;
+};
 
 export function ReplyForm({ topicId }: { topicId: string }) {
   const router = useRouter();
   const [body, setBody] = useState("");
+  const [target, setTarget] = useState<ReplyTarget | null>(null);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -23,8 +31,31 @@ export function ReplyForm({ topicId }: { topicId: string }) {
     return () => window.removeEventListener("ai-draft-ready", handleAIDraft);
   }, [topicId]);
 
+  useEffect(() => {
+    function handleReplyTarget(event: Event) {
+      const detail = (
+        event as CustomEvent<ReplyTarget & { topicId: string }>
+      ).detail;
+
+      if (detail?.topicId === topicId && detail.id) {
+        setTarget({
+          id: detail.id,
+          floor: detail.floor,
+          authorName: detail.authorName,
+          preview: detail.preview
+        });
+        document.getElementById("reply-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        window.setTimeout(() => document.getElementById("reply-body")?.focus(), 250);
+      }
+    }
+
+    window.addEventListener("reply-target-selected", handleReplyTarget);
+    return () => window.removeEventListener("reply-target-selected", handleReplyTarget);
+  }, [topicId]);
+
   return (
     <form
+      id="reply-form"
       className="stack"
       onSubmit={(event) => {
         event.preventDefault();
@@ -36,7 +67,10 @@ export function ReplyForm({ topicId }: { topicId: string }) {
           const response = await fetch(`/api/topics/${topicId}/replies`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ body: replyBody })
+            body: JSON.stringify({
+              body: replyBody,
+              parentReplyId: target?.id
+            })
           });
 
           if (!response.ok) {
@@ -46,11 +80,28 @@ export function ReplyForm({ topicId }: { topicId: string }) {
           }
 
           setBody("");
+          setTarget(null);
           router.refresh();
         });
       }}
     >
       {error ? <div className="error">{error}</div> : null}
+      {target ? (
+        <div className="reply-target">
+          <div>
+            <strong>正在回复 #{target.floor}</strong>
+            <span>{target.authorName}：{target.preview}</span>
+          </div>
+          <button
+            className="button ghost small"
+            type="button"
+            onClick={() => setTarget(null)}
+          >
+            <X size={14} aria-hidden="true" />
+            取消
+          </button>
+        </div>
+      ) : null}
       <div className="field">
         <label htmlFor="reply-body">参与讨论</label>
         <textarea
