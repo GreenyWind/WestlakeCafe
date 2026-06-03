@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Expand, FileText, MessageCircle, Minimize2, Send, Wand2 } from "lucide-react";
+import { Bot, Expand, FileText, MessageCircle, Minimize2, Send } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import type { AIChatMode, AIConversationMessage } from "@/lib/types";
 
@@ -29,24 +29,17 @@ export function AITools({
   topicId,
   initialGuide,
   initialGuideStatus,
-  guideIsStale,
-  repliesSinceGuide,
-  canPersistGuide
+  canGenerateGuide
 }: {
   topicId: string;
   initialGuide?: string;
   initialGuideStatus?: GuideStatus;
-  guideIsStale: boolean;
-  repliesSinceGuide: number;
-  canPersistGuide: boolean;
+  canGenerateGuide: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [guideExpanded, setGuideExpanded] = useState(false);
   const [guide, setGuide] = useState(initialGuide ?? "");
   const [guideStatus, setGuideStatus] = useState<GuideStatus>(initialGuideStatus ?? (initialGuide ? "COMPLETED" : "EMPTY"));
-  const [temporaryGuide, setTemporaryGuide] = useState(false);
-  const [staleGuide, setStaleGuide] = useState(guideIsStale);
-  const [newReplyCount, setNewReplyCount] = useState(repliesSinceGuide);
   const [mode, setMode] = useState<AIChatMode>("ask");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<AIConversationMessage[]>([]);
@@ -163,7 +156,7 @@ export function AITools({
     }
   }
 
-  function generateGuide(persist: boolean) {
+  function generateGuide() {
     runAI("guide", async () => {
       let streamedGuide = "";
 
@@ -174,26 +167,14 @@ export function AITools({
       try {
         await postStream(
           `/api/ai/topics/${topicId}/guide`,
-          { persist, stream: true },
+          { stream: true },
           {
-            onMeta(data) {
-              const value = data as { temporary?: unknown };
-              setTemporaryGuide(Boolean(value.temporary));
-            },
             onDelta(delta) {
               streamedGuide += delta;
               setGuide(streamedGuide);
             },
-            onDone(data) {
-              const value = data as { temporary?: unknown };
-              const isTemporary = Boolean(value.temporary);
+            onDone() {
               setGuideStatus("COMPLETED");
-              setTemporaryGuide(isTemporary);
-
-              if (!isTemporary) {
-                setStaleGuide(false);
-                setNewReplyCount(0);
-              }
             }
           }
         );
@@ -208,18 +189,20 @@ export function AITools({
       }
 
       setGuideStatus("COMPLETED");
-      if (persist) {
-        setStaleGuide(false);
-        setNewReplyCount(0);
-      }
     });
   }
 
   useEffect(() => {
-    if (!guide && guideStatus === "PENDING" && canPersistGuide && !pendingAction) {
-      generateGuide(true);
+    if (!guide && guideStatus === "PENDING" && canGenerateGuide && !pendingAction) {
+      generateGuide();
     }
-  }, [guide, guideStatus, canPersistGuide, pendingAction]);
+  }, [guide, guideStatus, canGenerateGuide, pendingAction]);
+
+  useEffect(() => {
+    setGuide(initialGuide ?? "");
+    setGuideStatus(initialGuideStatus ?? (initialGuide ? "COMPLETED" : "EMPTY"));
+    setGuideExpanded(false);
+  }, [topicId, initialGuide, initialGuideStatus]);
 
   function sendChat() {
     const trimmed = input.trim();
@@ -324,35 +307,12 @@ export function AITools({
               </button>
             </>
           ) : guideStatus === "FAILED" ? (
-            <p className="body-text muted">概览生成失败，可以稍后再试。</p>
+            <p className="body-text muted">概览生成失败。楼主编辑主楼后会重新生成。</p>
           ) : (
-            <p className="body-text muted">这个 topic 还没有公共概览。</p>
+            <p className="body-text muted">
+              {guideStatus === "PENDING" ? "等待楼主生成主楼导读。" : "这个 topic 还没有主楼导读。"}
+            </p>
           )}
-          {temporaryGuide ? (
-            <div className="notice">这是你本次临时生成的概览，离开或刷新页面后会消失。</div>
-          ) : null}
-          {staleGuide ? (
-            <div className="notice">
-              {newReplyCount >= 5
-                ? `公共概览之后已有 ${newReplyCount} 条新回复，可以更新。`
-                : "公共概览已经超过一周没有更新，可以更新。"}
-            </div>
-          ) : null}
-          <button
-            className="button secondary"
-            disabled={pending}
-            type="button"
-            onClick={() => generateGuide(canPersistGuide)}
-          >
-            <Wand2 size={16} aria-hidden="true" />
-            {pendingAction === "guide"
-              ? "生成中"
-              : canPersistGuide
-                ? guide
-                  ? "更新公共概览"
-                  : "生成公共概览"
-                : "临时生成概览"}
-          </button>
         </section>
 
         <section className="panel stack">

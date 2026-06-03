@@ -472,18 +472,37 @@ h3 {
 }
 
 .button.danger {
-  color: #9a2f25;
-  border-color: #f0c4bd;
+  background: #d46a22;
+  color: #fff;
+  border-color: #d46a22;
 }
 
 .button.secondary.danger {
-  background: #fff7f5;
+  background: #fff7f1;
+  color: #8a3f12;
+  border-color: #efc7a5;
 }
 
 .button.small {
   min-height: 30px;
   padding: 5px 8px;
   font-size: 13px;
+}
+
+.button.ghost.danger {
+  background: transparent;
+  color: #8a3f12;
+  border-color: transparent;
+}
+
+.button.ghost:hover,
+.button.ghost:focus-visible {
+  background: var(--surface-soft);
+}
+
+.button.ghost.danger:hover,
+.button.ghost.danger:focus-visible {
+  background: #fff4e8;
 }
 
 .button:focus,
@@ -662,6 +681,31 @@ select:focus {
   flex: 1 1 140px;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(23, 32, 26, 0.28);
+}
+
+.modal-panel {
+  width: min(720px, 100%);
+  max-height: min(760px, calc(100vh - 36px));
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.modal-panel.compact-modal {
+  width: min(420px, 100%);
+}
+
 .ai-thread {
   display: flex;
   flex-direction: column;
@@ -751,6 +795,24 @@ select:focus {
   color: #263229;
   line-height: 1.78;
   white-space: pre-wrap;
+}
+
+.topic-main-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.topic-inline-action {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.topic-inline-action .error {
+  font-size: 12px;
 }
 
 .ai-box {

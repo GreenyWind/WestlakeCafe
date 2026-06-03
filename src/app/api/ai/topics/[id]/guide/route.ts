@@ -17,10 +17,12 @@ export async function POST(request: Request, { params }: { params: RouteParams }
       return NextResponse.json({ message: "Topic 不存在。" }, { status: 404 });
     }
 
-    const requestedPersist = body?.persist !== false;
     const canPersist = Boolean(user && user.id === topic.authorId);
-    const persist = requestedPersist && canPersist;
     const wantsStream = Boolean(body?.stream);
+
+    if (!canPersist) {
+      return NextResponse.json({ message: "只有楼主可以生成主楼导读。" }, { status: 403 });
+    }
 
     if (wantsStream) {
       const result = await aiService.streamTopicGuide(id);
@@ -38,7 +40,6 @@ export async function POST(request: Request, { params }: { params: RouteParams }
 
           try {
             send("meta", {
-              temporary: !persist,
               status: "PENDING"
             });
 
@@ -53,28 +54,15 @@ export async function POST(request: Request, { params }: { params: RouteParams }
               throw new Error("AI_GUIDE_EMPTY_RESPONSE");
             }
 
-            const guide = persist
-              ? await repository.upsertAIGuide(id, content, result.model)
-              : {
-                  id: "temporary",
-                  topicId: id,
-                  content,
-                  model: result.model,
-                  status: "COMPLETED" as const,
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString()
-                };
+            const guide = await repository.upsertAIGuide(id, content, result.model);
 
             send("done", {
-              temporary: !persist,
               status: guide.status,
               model: guide.model,
               updatedAt: guide.updatedAt
             });
           } catch (error) {
-            if (persist) {
-              await aiService.markTopicGuideFailed(id).catch(() => undefined);
-            }
+            await aiService.markTopicGuideFailed(id).catch(() => undefined);
 
             send("error", { message: publicAIErrorMessage(error, "生成导读失败。") });
           } finally {
@@ -92,10 +80,7 @@ export async function POST(request: Request, { params }: { params: RouteParams }
       });
     }
 
-    return NextResponse.json({
-      ...(await aiService.generateTopicGuide(id, { persist })),
-      temporary: !persist
-    });
+    return NextResponse.json(await aiService.generateTopicGuide(id, { persist: true }));
   } catch (error) {
     if (error instanceof Error && error.message === "TOPIC_NOT_FOUND") {
       return NextResponse.json({ message: "Topic 不存在。" }, { status: 404 });

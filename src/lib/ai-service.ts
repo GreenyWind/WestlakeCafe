@@ -320,7 +320,7 @@ function mockPolish(topic: TopicDetail, input: string): AIPolishResponse {
 
 function guidePrompt(topic: TopicDetail) {
   return [
-    "请为下面这个校内学术 topic 生成一份简短的外领域读者概览。",
+    "请为下面这个校内学术 topic 主楼生成一份简短的外领域读者导读。",
     "目标是降低跨领域阅读门槛，不要评价论文质量，不要猜测论文里没有的信息。",
     "",
     "请严格按下面结构输出：",
@@ -333,7 +333,7 @@ function guidePrompt(topic: TopicDetail) {
     "## 展开解释",
     "用 3-5 条短 bullet 解释主楼的讨论背景、问题焦点和为什么外领域读者可能会关心。",
     "",
-    topicContext(topic)
+    topicMainPostContext(topic)
   ].join("\n");
 }
 

@@ -115,6 +115,14 @@ export type CreateTopicInput = {
   tagIds: string[];
 };
 
+export type UpdateTopicMainPostInput = {
+  title: string;
+  type: TopicType;
+  body: string;
+  paperTitle?: string;
+  paperUrl?: string;
+};
+
 export type TopicDraftPreference = {
   tagIds: string[];
   disciplineIds: string[];

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { AITools } from "@/components/ai-tools";
 import { DeleteReplyButton } from "@/components/delete-reply-button";
 import { DeleteTopicButton } from "@/components/delete-topic-button";
+import { EditTopicButton } from "@/components/edit-topic-button";
 import { ReplyForm } from "@/components/forms/reply-form";
 import { ReplyTargetButton } from "@/components/reply-target-button";
 import { repository } from "@/lib/repository";
@@ -47,10 +48,13 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
       replyId,
       floor: replyFloorById.get(replyId) ?? 0,
       reply: replyById.get(replyId),
-      count: children.filter((reply) => !reply.deletedAt).length
+      count: children.filter((reply) => !reply.deletedAt).length,
+      latestChildAt: children
+        .filter((reply) => !reply.deletedAt)
+        .reduce((latest, reply) => Math.max(latest, new Date(reply.createdAt).getTime()), 0)
     }))
     .filter((item) => item.floor > 0 && item.count > 0 && item.reply && !item.reply.deletedAt)
-    .sort((a, b) => b.count - a.count || a.floor - b.floor)
+    .sort((a, b) => b.count - a.count || b.latestChildAt - a.latestChildAt || a.floor - b.floor)
     .slice(0, 3);
 
   return (
@@ -83,7 +87,6 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
                 </Link>
               ))}
             </div>
-            {canDeleteTopic ? <DeleteTopicButton topicId={topic.id} /> : null}
           </header>
 
           {topic.paperTitle || topic.paperUrl ? (
@@ -102,6 +105,12 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
           <section>
             <h2>主题正文</h2>
             <p className="body-text">{topic.body}</p>
+            {canDeleteTopic ? (
+              <div className="topic-main-actions">
+                <EditTopicButton topic={topic} />
+                <DeleteTopicButton topicId={topic.id} />
+              </div>
+            ) : null}
           </section>
 
           <section className="stack">
@@ -221,9 +230,7 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
             topicId={topic.id}
             initialGuide={topic.aiGuide?.content}
             initialGuideStatus={topic.aiGuide?.status}
-            guideIsStale={Boolean(topic.aiGuideMeta?.isStale)}
-            repliesSinceGuide={topic.aiGuideMeta?.repliesSinceGuide ?? 0}
-            canPersistGuide={Boolean(canDeleteTopic)}
+            canGenerateGuide={Boolean(canDeleteTopic)}
           />
         </aside>
       </div>

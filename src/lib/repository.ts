@@ -27,6 +27,7 @@ import type {
   TopicDraftPreference,
   TopicListItem,
   TopicSearchSuggestion,
+  UpdateTopicMainPostInput,
   User
 } from "@/lib/types";
 import { slugify } from "@/lib/utils";
@@ -137,9 +138,6 @@ function toTopicBase(
 }
 
 function toTopicListItem(topic: TopicWithRelations): TopicListItem {
-  const guideUpdatedAt = topic.aiGuide?.updatedAt;
-  const isGuideOlderThanAWeek =
-    guideUpdatedAt && Date.now() - guideUpdatedAt.getTime() > 7 * 24 * 60 * 60 * 1000;
   const topicDisciplines =
     topic.disciplines.length > 0
       ? topic.disciplines.map((item) => toDiscipline(item.discipline))
@@ -155,7 +153,7 @@ function toTopicListItem(topic: TopicWithRelations): TopicListItem {
     aiGuide: toAIGuide(topic.aiGuide),
     aiGuideMeta: {
       repliesSinceGuide: 0,
-      isStale: Boolean(topic.aiGuide?.status === "COMPLETED" && isGuideOlderThanAWeek)
+      isStale: false
     }
   };
 }
@@ -657,6 +655,42 @@ export const repository = {
     return toTopicListItem(topic as TopicWithRelations);
   },
 
+  async updateTopicMainPost(
+    topicId: string,
+    userId: string,
+    input: UpdateTopicMainPostInput
+  ): Promise<TopicListItem | null> {
+    const existing = await prisma.topic.findUnique({
+      where: { id: topicId },
+      select: { authorId: true, status: true }
+    });
+
+    if (!existing || existing.status !== "PUBLISHED") {
+      return null;
+    }
+
+    if (existing.authorId !== userId) {
+      throw new Error("FORBIDDEN");
+    }
+
+    const topic = await prisma.topic.update({
+      where: { id: topicId },
+      data: {
+        title: input.title,
+        type: input.type,
+        body: input.body,
+        paperTitle: input.paperTitle || null,
+        paperUrl: input.paperUrl || null,
+        lastActivityAt: new Date()
+      },
+      include: includeTopicRelations()
+    });
+
+    await this.markAIGuidePending(topicId);
+
+    return toTopicListItem(topic as TopicWithRelations);
+  },
+
   async getTopicDraftPreference(userId: string): Promise<TopicDraftPreference> {
     const preference = await prisma.userTopicPreference.findUnique({
       where: { userId }
@@ -796,35 +830,9 @@ export const repository = {
   },
 
   async getAIGuideMeta(topicId: string): Promise<{ repliesSinceGuide: number; isStale: boolean }> {
-    const guide = await prisma.aIGuide.findUnique({
-      where: { topicId },
-      select: {
-        status: true,
-        updatedAt: true
-      }
-    });
-
-    if (!guide || guide.status !== "COMPLETED") {
-      return {
-        repliesSinceGuide: 0,
-        isStale: false
-      };
-    }
-
-    const repliesSinceGuide = await prisma.reply.count({
-      where: {
-        topicId,
-        deletedAt: null,
-        createdAt: {
-          gt: guide.updatedAt
-        }
-      }
-    });
-    const isOlderThanAWeek = Date.now() - guide.updatedAt.getTime() > 7 * 24 * 60 * 60 * 1000;
-
     return {
-      repliesSinceGuide,
-      isStale: repliesSinceGuide >= 5 || isOlderThanAWeek
+      repliesSinceGuide: 0,
+      isStale: false
     };
   },
 
@@ -863,6 +871,23 @@ export const repository = {
         content: "",
         model: "unknown",
         status: "FAILED"
+      }
+    });
+  },
+
+  async markAIGuidePending(topicId: string): Promise<void> {
+    await prisma.aIGuide.upsert({
+      where: { topicId },
+      update: {
+        content: "",
+        model: "pending",
+        status: "PENDING" satisfies AIJobStatus
+      },
+      create: {
+        topicId,
+        content: "",
+        model: "pending",
+        status: "PENDING"
       }
     });
   },
