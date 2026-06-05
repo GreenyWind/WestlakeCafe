@@ -4,6 +4,7 @@ import type {
   Discipline as PrismaDiscipline,
   Prisma,
   Reply as PrismaReply,
+  RecommendationSlotType as PrismaRecommendationSlotType,
   TagDiscipline as PrismaTagDiscipline,
   Tag as PrismaTag,
   TopicDiscipline as PrismaTopicDiscipline,
@@ -20,6 +21,8 @@ import type {
   NewDisciplineInput,
   NewTagInput,
   PublicUser,
+  RecommendedTopic,
+  RecommendationSlotType,
   Reply,
   Tag,
   Topic,
@@ -50,6 +53,45 @@ type TopicWithRelations = PrismaTopic & {
 
 type TopicDetailWithRelations = TopicWithRelations & {
   replies: Array<PrismaReply & { author: PrismaUser }>;
+};
+
+type RecommendationCandidate = TopicWithRelations & {
+  replies: Array<Pick<PrismaReply, "authorId" | "createdAt" | "deletedAt">>;
+};
+
+type UserRecommendationProfile = {
+  userId?: string;
+  schoolNames: string[];
+  rootDisciplineIds: Set<string>;
+  disciplineIds: Set<string>;
+  authoredTopicIds: Set<string>;
+  repliedTopicIds: Set<string>;
+  viewMap: Map<string, Date>;
+  shownTodayTopicIds: Set<string>;
+  hasBehavior: boolean;
+};
+
+const RECOMMENDATION_ALGORITHM_VERSION = "daily-deck-v1";
+const RECOMMENDATION_SLOTS: RecommendationSlotType[] = [
+  "FAMILIAR",
+  "FAMILIAR",
+  "FAMILIAR",
+  "ADJACENT",
+  "ADJACENT",
+  "CROSS_FIELD",
+  "CROSS_FIELD"
+];
+
+const RECOMMENDATION_LABELS: Record<RecommendationSlotType, string> = {
+  FAMILIAR: "熟悉入口",
+  ADJACENT: "相邻领域",
+  CROSS_FIELD: "跨界探索"
+};
+
+const FALLBACK_RECOMMENDATION_LABELS: Record<RecommendationSlotType, string> = {
+  FAMILIAR: "今日精选",
+  ADJACENT: "随机漫游",
+  CROSS_FIELD: "跨界探索"
 };
 
 function toDateString(value: Date | string) {
@@ -107,6 +149,7 @@ function toAIGuide(guide: PrismaAIGuide | null): AIGuide | undefined {
 
   return {
     ...guide,
+    oneLineSummary: guide.oneLineSummary ?? undefined,
     createdAt: toDateString(guide.createdAt),
     updatedAt: toDateString(guide.updatedAt)
   };
@@ -225,6 +268,391 @@ async function getDescendantDisciplineIds(disciplineId: string) {
   }
 
   return Array.from(result);
+}
+
+function dateKeyFor(value = new Date()) {
+  return value.toISOString().slice(0, 10);
+}
+
+function daysSince(value: Date, now = new Date()) {
+  return Math.max(0, (now.getTime() - value.getTime()) / 86_400_000);
+}
+
+function freshnessScore(lastActivityAt: Date, now = new Date()) {
+  const days = daysSince(lastActivityAt, now);
+
+  if (days <= 1) {
+    return 25;
+  }
+
+  if (days <= 3) {
+    return 22;
+  }
+
+  if (days <= 7) {
+    return 18;
+  }
+
+  if (days <= 14) {
+    return 12;
+  }
+
+  if (days <= 30) {
+    return 6;
+  }
+
+  return 2;
+}
+
+function activityScore(topic: RecommendationCandidate, now = new Date()) {
+  const visibleReplies = topic.replies.filter((reply) => !reply.deletedAt);
+  const replyScore = Math.min(visibleReplies.length * 3, 12);
+  const participantScore = Math.min(new Set(visibleReplies.map((reply) => reply.authorId)).size * 2, 6);
+  const recentReplyBonus = visibleReplies.some((reply) => daysSince(reply.createdAt, now) <= 7) ? 2 : 0;
+
+  return Math.min(replyScore + participantScore + recentReplyBonus, 20);
+}
+
+function readabilityScore(topic: RecommendationCandidate) {
+  if (!topic.aiGuide) {
+    return 1;
+  }
+
+  if (topic.aiGuide.status === "COMPLETED" && topic.aiGuide.content.trim() && topic.aiGuide.oneLineSummary?.trim()) {
+    return 10;
+  }
+
+  if (topic.aiGuide.status === "COMPLETED" && topic.aiGuide.content.trim()) {
+    return 7;
+  }
+
+  if (topic.aiGuide.status === "PENDING") {
+    return 4;
+  }
+
+  return 1;
+}
+
+function seededRandom(seed: string) {
+  let hash = 2166136261;
+
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return ((hash >>> 0) % 10000) / 10000;
+}
+
+function topicRootIds(topic: RecommendationCandidate) {
+  const ids = topic.disciplines
+    .map((item) => item.discipline.parentId ?? item.discipline.id)
+    .filter(Boolean);
+
+  if (ids.length === 0 && topic.primaryDiscipline) {
+    ids.push(topic.primaryDiscipline.parentId ?? topic.primaryDiscipline.id);
+  }
+
+  return Array.from(new Set(ids));
+}
+
+function topicDisciplineIds(topic: RecommendationCandidate) {
+  const ids = topic.disciplines.map((item) => item.disciplineId);
+
+  if (ids.length === 0) {
+    ids.push(topic.primaryDisciplineId);
+  }
+
+  return Array.from(new Set(ids));
+}
+
+function recommendationDistance(topic: RecommendationCandidate, profile: UserRecommendationProfile) {
+  const disciplineIds = topicDisciplineIds(topic);
+  const rootIds = topicRootIds(topic);
+
+  if (disciplineIds.some((disciplineId) => profile.disciplineIds.has(disciplineId))) {
+    return 0;
+  }
+
+  if (rootIds.some((rootId) => profile.rootDisciplineIds.has(rootId))) {
+    return 1;
+  }
+
+  return 2;
+}
+
+function slotMatchScore(slotType: RecommendationSlotType, distance: 0 | 1 | 2) {
+  const table: Record<RecommendationSlotType, Record<0 | 1 | 2, number>> = {
+    FAMILIAR: { 0: 30, 1: 16, 2: 4 },
+    ADJACENT: { 0: 10, 1: 30, 2: 14 },
+    CROSS_FIELD: { 0: 2, 1: 14, 2: 30 }
+  };
+
+  return table[slotType][distance];
+}
+
+function viewPenalty(topicId: string, profile: UserRecommendationProfile, now = new Date()) {
+  if (profile.authoredTopicIds.has(topicId)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  if (profile.repliedTopicIds.has(topicId)) {
+    return 80;
+  }
+
+  const viewedAt = profile.viewMap.get(topicId);
+  let penalty = 0;
+
+  if (viewedAt) {
+    const days = daysSince(viewedAt, now);
+
+    if (days <= 1) {
+      penalty += 40;
+    } else if (days <= 7) {
+      penalty += 25;
+    } else if (days <= 30) {
+      penalty += 12;
+    } else {
+      penalty += 6;
+    }
+  }
+
+  if (profile.shownTodayTopicIds.has(topicId)) {
+    penalty += 30;
+  }
+
+  return penalty;
+}
+
+function hasConcreteRecommendationSignal(profile: UserRecommendationProfile) {
+  return profile.disciplineIds.size > 0 || profile.rootDisciplineIds.size > 0;
+}
+
+function recommendationLabelsFor(profile: UserRecommendationProfile) {
+  return hasConcreteRecommendationSignal(profile) ? RECOMMENDATION_LABELS : FALLBACK_RECOMMENDATION_LABELS;
+}
+
+function toRecommendedTopic(
+  topic: TopicWithRelations,
+  recommendation: {
+    slotType: RecommendationSlotType;
+    position: number;
+    score: number;
+    label?: string;
+  }
+): RecommendedTopic {
+  return {
+    ...toTopicListItem(topic),
+    recommendation: {
+      ...recommendation,
+      label: recommendation.label ?? RECOMMENDATION_LABELS[recommendation.slotType]
+    }
+  };
+}
+
+async function buildRecommendationProfile(
+  user: PublicUser | null | undefined,
+  dateKey: string
+): Promise<UserRecommendationProfile> {
+  const profile: UserRecommendationProfile = {
+    userId: user?.id,
+    schoolNames: user?.schools?.filter((school) => school !== "其它") ?? [],
+    rootDisciplineIds: new Set(),
+    disciplineIds: new Set(),
+    authoredTopicIds: new Set(),
+    repliedTopicIds: new Set(),
+    viewMap: new Map(),
+    shownTodayTopicIds: new Set(),
+    hasBehavior: false
+  };
+
+  if (!user) {
+    return profile;
+  }
+
+  const [schoolRoots, authoredTopics, replies, views, batch] = await Promise.all([
+    profile.schoolNames.length > 0
+      ? prisma.discipline.findMany({
+          where: {
+            parentId: null,
+            name: { in: profile.schoolNames },
+            reviewStatus: "APPROVED"
+          },
+          select: { id: true }
+        })
+      : Promise.resolve([]),
+    prisma.topic.findMany({
+      where: { authorId: user.id, status: "PUBLISHED" },
+      select: { id: true }
+    }),
+    prisma.reply.findMany({
+      where: { authorId: user.id },
+      select: { topicId: true }
+    }),
+    prisma.topicView.findMany({
+      where: { userId: user.id },
+      select: { topicId: true, lastViewedAt: true }
+    }),
+    prisma.recommendationBatch.findUnique({
+      where: { userId: user.id },
+      include: {
+        items: true
+      }
+    })
+  ]);
+
+  schoolRoots.forEach((discipline) => profile.rootDisciplineIds.add(discipline.id));
+  authoredTopics.forEach((topic) => profile.authoredTopicIds.add(topic.id));
+  replies.forEach((reply) => profile.repliedTopicIds.add(reply.topicId));
+  views.forEach((view) => profile.viewMap.set(view.topicId, view.lastViewedAt));
+
+  if (batch?.dateKey === dateKey) {
+    batch.items.forEach((item) => profile.shownTodayTopicIds.add(item.topicId));
+  }
+
+  const behaviorTopicIds = Array.from(
+    new Set([
+      ...profile.authoredTopicIds,
+      ...profile.repliedTopicIds,
+      ...profile.viewMap.keys()
+    ])
+  );
+
+  profile.hasBehavior = behaviorTopicIds.length > 0;
+
+  if (behaviorTopicIds.length === 0) {
+    return profile;
+  }
+
+  const behaviorTopics = await prisma.topic.findMany({
+    where: {
+      id: { in: behaviorTopicIds },
+      status: "PUBLISHED"
+    },
+    select: {
+      primaryDisciplineId: true,
+      primaryDiscipline: {
+        select: {
+          id: true,
+          parentId: true
+        }
+      },
+      disciplines: {
+        select: {
+          disciplineId: true,
+          discipline: {
+            select: {
+              id: true,
+              parentId: true
+            }
+          }
+        }
+      }
+    }
+  });
+
+  behaviorTopics.forEach((topic) => {
+    const disciplines =
+      topic.disciplines.length > 0
+        ? topic.disciplines
+        : [
+            {
+              disciplineId: topic.primaryDisciplineId,
+              discipline: topic.primaryDiscipline
+            }
+          ];
+
+    disciplines.forEach((item) => {
+      profile.disciplineIds.add(item.disciplineId);
+      profile.rootDisciplineIds.add(item.discipline.parentId ?? item.discipline.id);
+    });
+  });
+
+  return profile;
+}
+
+async function fetchRecommendationCandidates() {
+  const topics = await prisma.topic.findMany({
+    where: { status: "PUBLISHED" },
+    orderBy: { lastActivityAt: "desc" },
+    take: 160,
+    include: {
+      ...includeTopicRelations(),
+      replies: {
+        select: {
+          authorId: true,
+          createdAt: true,
+          deletedAt: true
+        }
+      }
+    }
+  });
+
+  return topics as RecommendationCandidate[];
+}
+
+function recommendationScore(
+  topic: RecommendationCandidate,
+  slotType: RecommendationSlotType,
+  profile: UserRecommendationProfile,
+  dateKey: string,
+  now = new Date()
+) {
+  const penalty = viewPenalty(topic.id, profile, now);
+
+  if (!Number.isFinite(penalty)) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const distance = recommendationDistance(topic, profile) as 0 | 1 | 2;
+  const random = seededRandom(`${profile.userId ?? "guest"}:${dateKey}:${slotType}:${topic.id}`) * 5;
+
+  return (
+    freshnessScore(topic.lastActivityAt, now) +
+    activityScore(topic, now) +
+    readabilityScore(topic) +
+    slotMatchScore(slotType, distance) +
+    random -
+    penalty
+  );
+}
+
+function selectRecommendations(
+  candidates: RecommendationCandidate[],
+  profile: UserRecommendationProfile,
+  dateKey: string
+) {
+  const selectedTopicIds = new Set<string>();
+  const now = new Date();
+  const labels = recommendationLabelsFor(profile);
+
+  return RECOMMENDATION_SLOTS.flatMap((slotType, index) => {
+    const ranked = candidates
+      .filter((topic) => !selectedTopicIds.has(topic.id))
+      .map((topic) => ({
+        topic,
+        slotType,
+        position: index,
+        score: recommendationScore(topic, slotType, profile, dateKey, now),
+        label: labels[slotType]
+      }))
+      .filter((item) => Number.isFinite(item.score))
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b.topic.lastActivityAt.getTime() - a.topic.lastActivityAt.getTime() ||
+          a.topic.id.localeCompare(b.topic.id)
+      );
+
+    const chosen = ranked[0];
+
+    if (!chosen) {
+      return [];
+    }
+
+    selectedTopicIds.add(chosen.topic.id);
+    return [chosen];
+  });
 }
 
 async function uniqueTagSlug(name: string) {
@@ -575,6 +1003,141 @@ export const repository = {
       .map((topic) => toTopicListItem(topic as TopicWithRelations));
   },
 
+  async getDailyRecommendations(user?: PublicUser | null): Promise<RecommendedTopic[]> {
+    const dateKey = dateKeyFor();
+    const profile = await buildRecommendationProfile(user, dateKey);
+
+    if (user) {
+      const existing = await prisma.recommendationBatch.findUnique({
+        where: { userId: user.id },
+        include: {
+          items: {
+            orderBy: { position: "asc" },
+            include: {
+              topic: {
+                include: includeTopicRelations()
+              }
+            }
+          }
+        }
+      });
+
+      if (
+        existing &&
+        existing.dateKey === dateKey &&
+        existing.algorithmVersion === RECOMMENDATION_ALGORITHM_VERSION &&
+        existing.items.length > 0 &&
+        existing.items.every((item) => item.topic.status === "PUBLISHED")
+      ) {
+        const labels = recommendationLabelsFor(profile);
+
+        return existing.items.map((item) =>
+          toRecommendedTopic(item.topic as TopicWithRelations, {
+            slotType: item.slotType as RecommendationSlotType,
+            position: item.position,
+            score: item.score,
+            label: labels[item.slotType as RecommendationSlotType]
+          })
+        );
+      }
+    }
+
+    const candidates = await fetchRecommendationCandidates();
+    const selected = selectRecommendations(candidates, profile, dateKey);
+
+    if (!user) {
+      return selected.map((item) =>
+        toRecommendedTopic(item.topic as TopicWithRelations, {
+          slotType: item.slotType,
+          position: item.position,
+          score: item.score,
+          label: item.label
+        })
+      );
+    }
+
+    const batch = await prisma.$transaction(async (tx) => {
+      const current = await tx.recommendationBatch.upsert({
+        where: { userId: user.id },
+        update: {
+          dateKey,
+          algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION
+        },
+        create: {
+          userId: user.id,
+          dateKey,
+          algorithmVersion: RECOMMENDATION_ALGORITHM_VERSION
+        }
+      });
+
+      await tx.recommendationItem.deleteMany({
+        where: { batchId: current.id }
+      });
+
+      if (selected.length > 0) {
+        await tx.recommendationItem.createMany({
+          data: selected.map((item) => ({
+            batchId: current.id,
+            topicId: item.topic.id,
+            slotType: item.slotType as PrismaRecommendationSlotType,
+            position: item.position,
+            score: item.score
+          }))
+        });
+      }
+
+      return tx.recommendationBatch.findUnique({
+        where: { id: current.id },
+        include: {
+          items: {
+            orderBy: { position: "asc" },
+            include: {
+              topic: {
+                include: includeTopicRelations()
+              }
+            }
+          }
+        }
+      });
+    });
+
+    return (
+      batch?.items.map((item) =>
+        toRecommendedTopic(item.topic as TopicWithRelations, {
+          slotType: item.slotType as RecommendationSlotType,
+          position: item.position,
+          score: item.score,
+          label: selected.find((candidate) => candidate.topic.id === item.topicId)?.label
+        })
+      ) ?? []
+    );
+  },
+
+  async recordTopicView(topicId: string, userId?: string | null): Promise<void> {
+    if (!userId) {
+      return;
+    }
+
+    await prisma.topicView.upsert({
+      where: {
+        userId_topicId: {
+          userId,
+          topicId
+        }
+      },
+      update: {
+        lastViewedAt: new Date(),
+        viewCount: {
+          increment: 1
+        }
+      },
+      create: {
+        userId,
+        topicId
+      }
+    });
+  },
+
   async getTopicDetail(topicId: string, options: { incrementView?: boolean } = {}): Promise<TopicDetail | null> {
     if (options.incrementView ?? true) {
       await prisma.topic.updateMany({
@@ -836,17 +1399,19 @@ export const repository = {
     };
   },
 
-  async upsertAIGuide(topicId: string, content: string, model: string): Promise<AIGuide> {
+  async upsertAIGuide(topicId: string, content: string, model: string, oneLineSummary?: string): Promise<AIGuide> {
     const guide = await prisma.aIGuide.upsert({
       where: { topicId },
       update: {
         content,
+        ...(oneLineSummary !== undefined ? { oneLineSummary } : {}),
         model,
         status: "COMPLETED" satisfies AIJobStatus
       },
       create: {
         topicId,
         content,
+        oneLineSummary: oneLineSummary ?? null,
         model,
         status: "COMPLETED"
       }
@@ -858,6 +1423,17 @@ export const repository = {
     }
 
     return mapped;
+  },
+
+  async updateAIGuideOneLineSummary(topicId: string, oneLineSummary: string): Promise<AIGuide | null> {
+    const guide = await prisma.aIGuide.update({
+      where: { topicId },
+      data: {
+        oneLineSummary
+      }
+    });
+
+    return toAIGuide(guide) ?? null;
   },
 
   async markAIGuideFailed(topicId: string): Promise<void> {
@@ -880,12 +1456,14 @@ export const repository = {
       where: { topicId },
       update: {
         content: "",
+        oneLineSummary: null,
         model: "pending",
         status: "PENDING" satisfies AIJobStatus
       },
       create: {
         topicId,
         content: "",
+        oneLineSummary: null,
         model: "pending",
         status: "PENDING"
       }

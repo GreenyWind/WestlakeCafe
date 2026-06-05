@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { ArrowRight, Bot, Compass, MessagesSquare } from "lucide-react";
-import { TopicCard } from "@/components/topic-card";
+import { RecommendationDeck } from "@/components/recommendation-deck";
 import { repository } from "@/lib/repository";
+import { getCurrentUser } from "@/lib/session";
 
 export default async function HomePage() {
-  const [disciplines, randomTopics] = await Promise.all([
+  const user = await getCurrentUser();
+  const [disciplines, recommendedTopics] = await Promise.all([
     repository.listDisciplines(),
-    repository.listRandomTopics(4)
+    repository.getDailyRecommendations(user)
   ]);
 
   return (
@@ -42,15 +44,15 @@ export default async function HomePage() {
             <div>
               <strong>AI 降低门槛</strong>
               <br />
-              <span>导读、问答和发言整理先以 mock 接口跑通。</span>
+              <span>导读、问答和发言整理帮助外领域读者进入讨论。</span>
             </div>
           </div>
           <div className="signal-row">
             <MessagesSquare size={22} aria-hidden="true" />
             <div>
-              <strong>随机遇见外领域</strong>
+              <strong>今日跨界探索</strong>
               <br />
-              <span>首页随机推荐 topic，先实现简单而有效的跨域曝光。</span>
+              <span>每日生成一组推荐，用滑动方式遇见熟悉和陌生 topic。</span>
             </div>
           </div>
         </div>
@@ -89,18 +91,14 @@ export default async function HomePage() {
       <section className="section">
         <div className="section-header">
           <div>
-            <h2>随机推荐 topic</h2>
-            <p>先用随机推荐制造一点跨领域偶遇。</p>
+            <h2>今日跨界探索</h2>
+            <p>滚动卡片，在熟悉入口、相邻领域和跨界探索之间切换。</p>
           </div>
           <Link className="button secondary" href="/topics">
             查看全部
           </Link>
         </div>
-        <div className="grid grid-2">
-          {randomTopics.map((topic) => (
-            <TopicCard key={topic.id} topic={topic} />
-          ))}
-        </div>
+        <RecommendationDeck topics={recommendedTopics} />
       </section>
     </main>
   );

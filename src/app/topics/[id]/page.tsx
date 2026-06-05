@@ -28,6 +28,10 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
     notFound();
   }
 
+  if (user) {
+    await repository.recordTopicView(topic.id, user.id);
+  }
+
   const canDeleteTopic = user && user.id === topic.authorId;
   const replyFloorById = new Map(topic.replies.map((reply, index) => [reply.id, index + 1]));
   const replyById = new Map(topic.replies.map((reply) => [reply.id, reply]));

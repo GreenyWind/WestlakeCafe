@@ -438,6 +438,138 @@ h3 {
   line-height: 1.65;
 }
 
+.recommendation-deck {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 330px;
+  padding: 18px 72px 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(247, 250, 247, 0.94)),
+    var(--surface);
+  box-shadow: var(--shadow);
+  overscroll-behavior: contain;
+}
+
+.recommendation-card {
+  width: min(660px, 100%);
+  min-height: 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: 30px clamp(24px, 5vw, 48px);
+  border: 1px solid #cbded7;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 16px 38px rgba(31, 45, 37, 0.08);
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.recommendation-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(22, 107, 93, 0.45);
+}
+
+.deck-label {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid #efc8b6;
+  border-radius: 999px;
+  background: #fff8f3;
+  color: #7e3c23;
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.recommendation-card h3 {
+  max-width: 620px;
+  margin-bottom: 0;
+  font-size: clamp(24px, 3.4vw, 36px);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.recommendation-card p {
+  max-width: 620px;
+  margin-bottom: 0;
+  color: #3d4a40;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.deck-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.deck-arrow {
+  position: absolute;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--primary-dark);
+  transform: translateY(-50%);
+}
+
+.deck-arrow:hover,
+.deck-arrow:focus-visible {
+  background: var(--surface-soft);
+}
+
+.deck-arrow-left {
+  left: 22px;
+}
+
+.deck-arrow-right {
+  right: 22px;
+}
+
+.deck-dots {
+  position: absolute;
+  bottom: 17px;
+  display: flex;
+  gap: 7px;
+}
+
+.deck-dots button {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #c9d3cc;
+}
+
+.deck-dots button.active {
+  width: 22px;
+  background: var(--primary);
+}
+
+.recommendation-empty {
+  padding: 28px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  text-align: center;
+}
+
 .topic-tags {
   display: flex;
   gap: 8px;
@@ -990,5 +1122,33 @@ select:focus {
 
   .nav-actions {
     justify-content: flex-start;
+  }
+
+  .recommendation-deck {
+    min-height: 360px;
+    padding: 14px 14px 54px;
+  }
+
+  .recommendation-card {
+    min-height: 240px;
+    padding: 24px 20px;
+  }
+
+  .deck-arrow {
+    top: auto;
+    bottom: 11px;
+    transform: none;
+  }
+
+  .deck-arrow-left {
+    left: 14px;
+  }
+
+  .deck-arrow-right {
+    right: 14px;
+  }
+
+  .deck-dots {
+    bottom: 27px;
   }
 }

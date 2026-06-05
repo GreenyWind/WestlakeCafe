@@ -63,6 +63,7 @@ export type AIGuide = {
   id: string;
   topicId: string;
   content: string;
+  oneLineSummary?: string;
   model: string;
   status: "PENDING" | "COMPLETED" | "FAILED";
   createdAt: string;
@@ -102,6 +103,17 @@ export type TopicListItem = Topic & {
 
 export type TopicDetail = TopicListItem & {
   replies: Array<Reply & { author: PublicUser }>;
+};
+
+export type RecommendationSlotType = "FAMILIAR" | "ADJACENT" | "CROSS_FIELD";
+
+export type RecommendedTopic = TopicListItem & {
+  recommendation: {
+    slotType: RecommendationSlotType;
+    label: string;
+    position: number;
+    score: number;
+  };
 };
 
 export type CreateTopicInput = {

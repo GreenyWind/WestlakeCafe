@@ -55,6 +55,9 @@ export async function POST(request: Request, { params }: { params: RouteParams }
             }
 
             const guide = await repository.upsertAIGuide(id, content, result.model);
+            await aiService.generateTopicOneLineSummary(id).catch((error) => {
+              console.error("Failed to generate one-line summary", error);
+            });
 
             send("done", {
               status: guide.status,
@@ -80,7 +83,12 @@ export async function POST(request: Request, { params }: { params: RouteParams }
       });
     }
 
-    return NextResponse.json(await aiService.generateTopicGuide(id, { persist: true }));
+    const guide = await aiService.generateTopicGuide(id, { persist: true });
+    await aiService.generateTopicOneLineSummary(id).catch((error) => {
+      console.error("Failed to generate one-line summary", error);
+    });
+
+    return NextResponse.json(guide);
   } catch (error) {
     if (error instanceof Error && error.message === "TOPIC_NOT_FOUND") {
       return NextResponse.json({ message: "Topic 不存在。" }, { status: 404 });

@@ -25,6 +25,8 @@ model User {
   replies       Reply[]
   aiSessions    AIChatSession[]
   aiDrafts      AIDraft[]
+  topicViews     TopicView[]
+  recommendationBatch RecommendationBatch?
   topicPreference UserTopicPreference?
   createdDisciplines Discipline[] @relation("DisciplineCreator")
   createdTags        Tag[]        @relation("TagCreator")
@@ -109,6 +111,8 @@ model Topic {
   aiSessions          AIChatSession[]
   aiDrafts            AIDraft[]
   disciplines         TopicDiscipline[]
+  topicViews          TopicView[]
+  recommendationItems RecommendationItem[]
 }
 
 model TopicTag {
@@ -147,14 +151,58 @@ model Reply {
 }
 
 model AIGuide {
-  id        String        @id @default(cuid())
-  topicId   String        @unique
-  topic     Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  content   String
-  model     String
-  status    AIJobStatus   @default(COMPLETED)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id             String        @id @default(cuid())
+  topicId        String        @unique
+  topic          Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  content        String
+  oneLineSummary String?
+  model          String
+  status         AIJobStatus   @default(COMPLETED)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model TopicView {
+  id            String   @id @default(cuid())
+  userId        String
+  topicId       String
+  firstViewedAt DateTime @default(now())
+  lastViewedAt  DateTime @default(now())
+  viewCount     Int      @default(1)
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic         Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId])
+  @@index([topicId])
+}
+
+model RecommendationBatch {
+  id               String               @id @default(cuid())
+  userId           String               @unique
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateKey          String
+  algorithmVersion String
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  items            RecommendationItem[]
+}
+
+model RecommendationItem {
+  id        String                 @id @default(cuid())
+  batchId   String
+  topicId   String
+  slotType  RecommendationSlotType
+  position  Int
+  score     Float
+  createdAt DateTime               @default(now())
+
+  batch     RecommendationBatch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  topic     Topic                   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, position])
+  @@index([topicId])
 }
 
 model AIChatSession {
@@ -223,4 +271,10 @@ enum AIMessageRole {
   USER
   ASSISTANT
   SYSTEM
+}
+
+enum RecommendationSlotType {
+  FAMILIAR
+  ADJACENT
+  CROSS_FIELD
 }

@@ -291,6 +291,10 @@ function mockGuide(topic: TopicDetail) {
   ].join("\n\n");
 }
 
+function mockOneLineSummary(topic: TopicDetail) {
+  return truncate(topic.paperTitle || topic.body, 72);
+}
+
 function mockAnswer(topic: TopicDetail, question: string): AIQuestionResponse {
   return {
     answer: [
@@ -332,6 +336,19 @@ function guidePrompt(topic: TopicDetail) {
     "",
     "## 展开解释",
     "用 3-5 条短 bullet 解释主楼的讨论背景、问题焦点和为什么外领域读者可能会关心。",
+    "",
+    topicMainPostContext(topic)
+  ].join("\n");
+}
+
+function oneLineSummaryPrompt(topic: TopicDetail) {
+  return [
+    "请为下面这个校内学术 topic 主楼生成一句适合推荐卡片展示的中文摘要。",
+    "要求：",
+    "1. 只写一句话，不要标题、编号、引号或 Markdown。",
+    "2. 尽量控制在 25-38 个汉字；可以略长，但不要超过 55 个汉字。",
+    "3. 让外领域读者能快速判断 topic 在讨论什么。",
+    "4. 不要评价论文质量，不要编造未给出的结论。",
     "",
     topicMainPostContext(topic)
   ].join("\n");
@@ -915,6 +932,25 @@ export const aiService = {
     }
 
     return repository.upsertAIGuide(topicId, content, modelLabelFor(guideModel));
+  },
+
+  async generateTopicOneLineSummary(topicId: string) {
+    const topic = await repository.getTopicDetail(topicId, { incrementView: false });
+    if (!topic) {
+      throw new Error("TOPIC_NOT_FOUND");
+    }
+
+    const summaryModel = CHAT_FAST_MODEL;
+    const content = isRealProvider()
+      ? await callModel(systemGuidePrompt(), oneLineSummaryPrompt(topic), { maxTokens: 120, model: summaryModel })
+      : mockOneLineSummary(topic);
+    const summary = content.replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, "").trim();
+
+    if (!summary) {
+      throw new Error("AI_ONE_LINE_SUMMARY_EMPTY_RESPONSE");
+    }
+
+    return repository.updateAIGuideOneLineSummary(topicId, truncate(summary, 90));
   },
 
   async streamTopicGuide(topicId: string) {
