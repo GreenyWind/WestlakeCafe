@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen } from "lucide-react";
+import { Coffee } from "lucide-react";
 import "@/app/globals.css";
 import { AuthNav } from "@/components/auth-nav";
 import { SiteSearch } from "@/components/site-search";
@@ -25,7 +25,7 @@ export default async function RootLayout({
           <header className="topbar">
             <Link className="brand" href="/">
               <span className="brand-mark">
-                <BookOpen size={18} aria-hidden="true" />
+                <Coffee size={18} aria-hidden="true" />
               </span>
               <span>WestlakeCafe</span>
             </Link>

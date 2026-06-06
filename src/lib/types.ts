@@ -174,6 +174,7 @@ export type AIQuestionResponse = {
 export type AIConversationMessage = {
   role: "user" | "assistant";
   content: string;
+  referencedReplyNumbers?: number[];
 };
 
 export type AIChatMode = "ask" | "clarify" | "draft";

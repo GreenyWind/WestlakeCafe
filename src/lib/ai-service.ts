@@ -113,9 +113,15 @@ function topicMainPostContext(topic: TopicDetail) {
     .join("\n");
 }
 
+function uniqueNumbers(values: number[]) {
+  return Array.from(
+    new Set(values.filter((value) => Number.isInteger(value) && value > 0))
+  ).sort((a, b) => a - b);
+}
+
 function parseReplyReferences(input: string) {
   const result = new Set<number>();
-  const patterns = [/@\s*(\d+)\s*楼/g, /#\s*(\d+)/g, /(?:^|[^\d])(\d+)\s*楼/g];
+  const patterns = [/@\s*(\d+)\s*楼/g, /(?:^|[^\d])(\d+)\s*楼/g];
 
   for (const pattern of patterns) {
     for (const match of input.matchAll(pattern)) {
@@ -185,8 +191,14 @@ function questionContext(topic: TopicDetail, messages: AIConversationMessage[], 
   ].join("\n");
 }
 
-function chatPrompt(topic: TopicDetail, input: string, messages: AIConversationMessage[], mode: AIChatMode) {
-  const referencedReplyNumbers = parseReplyReferences(input);
+function chatPrompt(
+  topic: TopicDetail,
+  input: string,
+  messages: AIConversationMessage[],
+  mode: AIChatMode,
+  explicitReplyReferences: number[] = []
+) {
+  const referencedReplyNumbers = uniqueNumbers([...parseReplyReferences(input), ...explicitReplyReferences]);
   const referenced = referencedRepliesContext(topic, referencedReplyNumbers);
   const history = conversationContext(messages);
 
@@ -982,14 +994,15 @@ export const aiService = {
     topicId: string,
     input: string,
     mode: AIChatMode,
-    messages: AIConversationMessage[] = []
+    messages: AIConversationMessage[] = [],
+    referencedReplyNumbers: number[] = []
   ): Promise<AIChatResponse> {
     const topic = await repository.getTopicDetail(topicId, { incrementView: false });
     if (!topic) {
       throw new Error("TOPIC_NOT_FOUND");
     }
 
-    const { prompt, referencedReplyNumbers, warnings } = chatPrompt(topic, input, messages, mode);
+    const promptData = chatPrompt(topic, input, messages, mode, referencedReplyNumbers);
 
     if (!isRealProvider()) {
       const mock =
@@ -999,8 +1012,8 @@ export const aiService = {
       return {
         message: mock,
         mode,
-        referencedReplyNumbers,
-        warnings
+        referencedReplyNumbers: promptData.referencedReplyNumbers,
+        warnings: promptData.warnings
       };
     }
 
@@ -1009,13 +1022,13 @@ export const aiService = {
     const model = mode === "draft" ? CHAT_QUALITY_MODEL : CHAT_FAST_MODEL;
 
     return {
-      message: await callModel(system, prompt, {
+      message: await callModel(system, promptData.prompt, {
         maxTokens: mode === "draft" ? 1400 : 1000,
         model
       }),
       mode,
-      referencedReplyNumbers,
-      warnings
+      referencedReplyNumbers: promptData.referencedReplyNumbers,
+      warnings: promptData.warnings
     };
   },
 
@@ -1023,14 +1036,15 @@ export const aiService = {
     topicId: string,
     input: string,
     mode: AIChatMode,
-    messages: AIConversationMessage[] = []
+    messages: AIConversationMessage[] = [],
+    referencedReplyNumbers: number[] = []
   ) {
     const topic = await repository.getTopicDetail(topicId, { incrementView: false });
     if (!topic) {
       throw new Error("TOPIC_NOT_FOUND");
     }
 
-    const { prompt, referencedReplyNumbers, warnings } = chatPrompt(topic, input, messages, mode);
+    const promptData = chatPrompt(topic, input, messages, mode, referencedReplyNumbers);
 
     if (!isRealProvider()) {
       const mock =
@@ -1039,8 +1053,8 @@ export const aiService = {
           : mockPolish(topic, input).polished;
       return {
         mode,
-        referencedReplyNumbers,
-        warnings,
+        referencedReplyNumbers: promptData.referencedReplyNumbers,
+        warnings: promptData.warnings,
         stream: (async function* () {
           for (const chunk of chunkText(mock)) {
             yield chunk;
@@ -1055,9 +1069,9 @@ export const aiService = {
 
     return {
       mode,
-      referencedReplyNumbers,
-      warnings,
-      stream: streamModel(system, prompt, {
+      referencedReplyNumbers: promptData.referencedReplyNumbers,
+      warnings: promptData.warnings,
+      stream: streamModel(system, promptData.prompt, {
         maxTokens: mode === "draft" ? 1400 : 1000,
         model
       })

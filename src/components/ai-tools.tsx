@@ -1,7 +1,7 @@
 "use client";
 
 import { Bot, Expand, FileText, MessageCircle, Minimize2, Send } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type { AIChatMode, AIConversationMessage } from "@/lib/types";
 
 type GuideStatus = "EMPTY" | "PENDING" | "COMPLETED" | "FAILED";
@@ -15,7 +15,7 @@ const modeLabels: Record<AIChatMode, string> = {
 
 const modePlaceholders: Record<AIChatMode, string> = {
   ask: "输入不懂的术语、方法或背景问题。",
-  clarify: "写下你的直觉。可输入 @2楼 或 #2 引用具体回复。",
+  clarify: "写下你的直觉。输入 #2 后可选择引用具体回复。",
   draft: "让 AI 根据上面的对话整理成可发布回复。"
 };
 
@@ -43,12 +43,29 @@ export function AITools({
   const [mode, setMode] = useState<AIChatMode>("ask");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<AIConversationMessage[]>([]);
+  const [selectedReplyReferences, setSelectedReplyReferences] = useState<number[]>([]);
   const [lastDraft, setLastDraft] = useState("");
   const [chatWarnings, setChatWarnings] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [isPending, startTransition] = useTransition();
   const pending = isPending || Boolean(pendingAction);
+  const referenceCandidates = useMemo(() => {
+    const matches = input.matchAll(/#\s*(\d+)/g);
+    const values = Array.from(matches)
+      .map((match) => Number(match[1]))
+      .filter((value) => Number.isInteger(value) && value > 0 && !selectedReplyReferences.includes(value));
+
+    return Array.from(new Set(values)).sort((a, b) => a - b);
+  }, [input, selectedReplyReferences]);
+
+  function addReplyReference(floor: number) {
+    setSelectedReplyReferences((current) => Array.from(new Set([...current, floor])).sort((a, b) => a - b));
+  }
+
+  function removeReplyReference(floor: number) {
+    setSelectedReplyReferences((current) => current.filter((item) => item !== floor));
+  }
 
   function runAI<T>(action: PendingAction, task: () => Promise<T>) {
     setError("");
@@ -213,9 +230,11 @@ export function AITools({
 
     const history = messages;
     const outbound = trimmed || "请根据前面的讨论生成可发布回复。";
-    const userMessage = { role: "user" as const, content: outbound };
+    const currentReplyReferences = selectedReplyReferences;
+    const userMessage = { role: "user" as const, content: outbound, referencedReplyNumbers: currentReplyReferences };
     const assistantPlaceholder = { role: "assistant" as const, content: "" };
     setInput("");
+    setSelectedReplyReferences([]);
     setMessages([...history, userMessage, assistantPlaceholder]);
     setChatWarnings([]);
 
@@ -229,6 +248,7 @@ export function AITools({
             mode,
             message: outbound,
             messages: history,
+            referencedReplyNumbers: currentReplyReferences,
             stream: true
           },
           {
@@ -337,6 +357,13 @@ export function AITools({
               {messages.map((message, index) => (
                 <div className={`ai-message ${message.role}`} key={`${message.role}-${index}`}>
                   <span>{message.role === "user" ? "你" : "AI"}</span>
+                  {message.referencedReplyNumbers?.length ? (
+                    <div className="ai-reference-list">
+                      {message.referencedReplyNumbers.map((floor) => (
+                        <strong key={floor}>#{floor}</strong>
+                      ))}
+                    </div>
+                  ) : null}
                   <p className={`body-text ${message.content ? "" : "muted"}`}>
                     {message.content || (pendingAction === "chat" ? pendingText[mode] : "AI 没有返回内容。")}
                   </p>
@@ -358,6 +385,30 @@ export function AITools({
             placeholder={modePlaceholders[mode]}
             onChange={(event) => setInput(event.target.value)}
           />
+          {referenceCandidates.length || selectedReplyReferences.length ? (
+            <div className="ai-reference-picker">
+              {referenceCandidates.map((floor) => (
+                <button
+                  className="chip selectable-chip"
+                  key={`candidate-${floor}`}
+                  type="button"
+                  onClick={() => addReplyReference(floor)}
+                >
+                  引用 <strong>#{floor}</strong>
+                </button>
+              ))}
+              {selectedReplyReferences.map((floor) => (
+                <button
+                  className="chip chip-button active-reference"
+                  key={`selected-${floor}`}
+                  type="button"
+                  onClick={() => removeReplyReference(floor)}
+                >
+                  已引用 <strong>#{floor}</strong>
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div className="button-row">
             <button
               className="button"

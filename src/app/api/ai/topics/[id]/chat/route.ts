@@ -14,6 +14,7 @@ export async function POST(request: Request, { params }: { params: RouteParams }
   const rawMode = String(body?.mode ?? "ask") as AIChatMode;
   const mode = modes.has(rawMode) ? rawMode : "ask";
   const messages = normalizeMessages(body?.messages);
+  const referencedReplyNumbers = normalizeReplyNumbers(body?.referencedReplyNumbers);
 
   if (!message) {
     return NextResponse.json({ message: "消息不能为空。" }, { status: 400 });
@@ -23,10 +24,10 @@ export async function POST(request: Request, { params }: { params: RouteParams }
 
   try {
     if (!wantsStream) {
-      return NextResponse.json(await aiService.chat(id, message, mode, messages));
+      return NextResponse.json(await aiService.chat(id, message, mode, messages, referencedReplyNumbers));
     }
 
-    const result = await aiService.streamChat(id, message, mode, messages);
+    const result = await aiService.streamChat(id, message, mode, messages, referencedReplyNumbers);
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
@@ -84,20 +85,39 @@ function normalizeMessages(value: unknown): AIConversationMessage[] {
   }
 
   return value
-    .map((item) => {
+    .map((item): AIConversationMessage | null => {
       if (!item || typeof item !== "object") {
         return null;
       }
 
       const role = "role" in item ? item.role : "";
       const content = "content" in item ? String(item.content ?? "").trim() : "";
+      const referencedReplyNumbers = normalizeReplyNumbers(
+        "referencedReplyNumbers" in item ? item.referencedReplyNumbers : undefined
+      );
 
       if ((role !== "user" && role !== "assistant") || !content) {
         return null;
       }
 
-      return { role, content } satisfies AIConversationMessage;
+      return { role, content, referencedReplyNumbers };
     })
-    .filter((item): item is AIConversationMessage => Boolean(item))
+    .filter((item): item is AIConversationMessage => item !== null)
     .slice(-12);
+}
+
+function normalizeReplyNumbers(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => Number(item))
+        .filter((item) => Number.isInteger(item) && item > 0)
+    )
+  )
+    .sort((a, b) => a - b)
+    .slice(0, 8);
 }
