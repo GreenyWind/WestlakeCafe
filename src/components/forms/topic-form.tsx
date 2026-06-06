@@ -19,6 +19,16 @@ function unique(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
+function splitColumns<T>(values: T[]) {
+  const columns: T[][] = [[], []];
+
+  values.forEach((value, index) => {
+    columns[index % 2].push(value);
+  });
+
+  return columns;
+}
+
 function makeDraftTag(): DraftTag {
   return {
     id: crypto.randomUUID(),
@@ -49,6 +59,7 @@ export function TopicForm({
   const router = useRouter();
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
+  const [tagSearch, setTagSearch] = useState("");
   const initialTagIds = useMemo(
     () => unique((initialPreference?.tagIds ?? []).filter((id) => tags.some((tag) => tag.id === id))),
     [initialPreference?.tagIds, tags]
@@ -77,6 +88,16 @@ export function TopicForm({
     [leafDisciplines, rootDisciplines]
   );
   const selectedTags = tags.filter((tag) => selectedTagIds.includes(tag.id));
+  const normalizedTagSearch = tagSearch.trim().toLowerCase();
+  const searchedTags = useMemo(() => {
+    if (!normalizedTagSearch) {
+      return [];
+    }
+
+    return tags.filter((tag) =>
+      `${tag.name} ${tag.slug}`.toLowerCase().includes(normalizedTagSearch)
+    );
+  }, [normalizedTagSearch, tags]);
   const visibleSelectedDisciplines = leafDisciplines.filter((discipline) =>
     selectedDisciplineIds.includes(discipline.id)
   );
@@ -266,17 +287,82 @@ export function TopicForm({
       </div>
 
       <div className="field">
-        <label>选择已有 tag</label>
-        <div className="topic-tags">
-          {tags.map((tag) => (
-            <label className="chip selectable-chip" key={tag.id}>
-              <input
-                checked={selectedTagIds.includes(tag.id)}
-                onChange={(event) => toggleTag(tag, event.currentTarget.checked)}
-                type="checkbox"
-              />{" "}
-              {tag.name}
-            </label>
+        <label htmlFor="tagSearch">搜索已有 tag</label>
+        <input
+          className="input"
+          id="tagSearch"
+          onChange={(event) => setTagSearch(event.currentTarget.value)}
+          placeholder="例如：GLP-1、具身智能、结构生物学"
+          type="search"
+          value={tagSearch}
+        />
+        {normalizedTagSearch ? (
+          <div className="tag-search-results">
+            {searchedTags.length > 0 ? (
+              searchedTags.map((tag) => (
+                <label className="chip selectable-chip" key={tag.id}>
+                  <input
+                    checked={selectedTagIds.includes(tag.id)}
+                    onChange={(event) => toggleTag(tag, event.currentTarget.checked)}
+                    type="checkbox"
+                  />{" "}
+                  {tag.name}
+                </label>
+              ))
+            ) : (
+              <span className="muted">没有找到匹配的已审核 tag，可以在页面底部新建。</span>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="field">
+        <label>按学院和子领域选择 tag</label>
+        <div className="taxonomy-browser">
+          {rootDisciplines.map((root) => (
+            <details className="taxonomy-root" key={root.id} open={root.children.some((discipline) => selectedDisciplineIds.includes(discipline.id))}>
+              <summary>
+                <span>{root.name}</span>
+                <small>{root.children.length} 个子领域</small>
+              </summary>
+              <div className="taxonomy-children">
+                {splitColumns(root.children).map((column, columnIndex) => (
+                  <div className="taxonomy-column" key={`${root.id}-${columnIndex}`}>
+                    {column.map((discipline) => {
+                      const disciplineTags = tags.filter((tag) => (tag.disciplineIds ?? []).includes(discipline.id));
+                      const hasSelectedTag = disciplineTags.some((tag) => selectedTagIds.includes(tag.id));
+
+                      return (
+                        <details className={`taxonomy-child ${hasSelectedTag ? "selected" : ""}`} key={discipline.id}>
+                          <summary className="taxonomy-child-summary">
+                            <span>
+                              {discipline.name}
+                            </span>
+                            <small>{disciplineTags.length} tags</small>
+                          </summary>
+                          {disciplineTags.length > 0 ? (
+                            <div className="topic-tags">
+                              {disciplineTags.map((tag) => (
+                                <label className="chip selectable-chip" key={tag.id}>
+                                  <input
+                                    checked={selectedTagIds.includes(tag.id)}
+                                    onChange={(event) => toggleTag(tag, event.currentTarget.checked)}
+                                    type="checkbox"
+                                  />{" "}
+                                  {tag.name}
+                                </label>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="field-help">这个子领域暂时没有已审核 tag。</p>
+                          )}
+                        </details>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </details>
           ))}
         </div>
         {selectedTags.length > 0 ? (
@@ -292,33 +378,31 @@ export function TopicForm({
       </div>
 
       <div className="field">
-        <label>调整学科归属</label>
-        <div className="discipline-picker">
-          {rootDisciplines.map((root) => (
-            <div className="discipline-picker-group" key={root.id}>
-              <strong>{root.name}</strong>
-              <div className="topic-tags">
-                {root.children.map((discipline) => (
-                  <label className="chip selectable-chip" key={discipline.id}>
-                    <input
-                      checked={selectedDisciplineIds.includes(discipline.id)}
-                      onChange={(event) => toggleDiscipline(discipline.id, event.currentTarget.checked)}
-                      type="checkbox"
-                    />{" "}
-                    {discipline.name}
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
+        <label>已选 tag</label>
+        <div className="selection-summary">
+          {selectedTags.length > 0 ? (
+            selectedTags.map((tag) => (
+              <button
+                className="chip chip-button"
+                key={tag.id}
+                onClick={() => toggleTag(tag, false)}
+                type="button"
+              >
+                {tag.name}
+                <X size={13} aria-hidden="true" />
+              </button>
+            ))
+          ) : (
+            <span className="muted">还没有选择 tag。</span>
+          )}
         </div>
       </div>
 
       <section className="nested-panel stack">
         <div className="section-header compact">
           <div>
-            <h3>新建 tag</h3>
-            <p>找不到合适 tag 时再添加。新建 tag 会标记为未审核，暂时只服务这次发帖和后续管理员整理。</p>
+            <h3>找不到合适分类？</h3>
+            <p>可以在这里新建 tag，必要时同时新建子领域。新内容会标记为未审核，后续由管理员整理。</p>
           </div>
           <button className="button secondary small" onClick={() => setDraftTags((current) => [...current, makeDraftTag()])} type="button">
             <Plus size={15} aria-hidden="true" />
@@ -362,24 +446,34 @@ export function TopicForm({
               </div>
               <div className="field">
                 <label>归属已有学科</label>
-                <div className="topic-tags">
-                  {leafDisciplines.map((discipline) => (
-                    <label className="chip selectable-chip" key={discipline.id}>
-                      <input
-                        checked={tag.disciplineIds.includes(discipline.id)}
-                        onChange={(event) => {
-                          const nextIds = event.currentTarget.checked
-                            ? unique([...tag.disciplineIds, discipline.id])
-                            : tag.disciplineIds.filter((id) => id !== discipline.id);
-                          updateDraftTag(tag.id, { disciplineIds: nextIds });
-                          if (event.currentTarget.checked) {
-                            setSelectedDisciplineIds((current) => unique([...current, discipline.id]));
-                          }
-                        }}
-                        type="checkbox"
-                      />{" "}
-                      {discipline.name}
-                    </label>
+                <div className="taxonomy-browser compact">
+                  {rootDisciplines.map((root) => (
+                    <details className="taxonomy-root" key={root.id}>
+                      <summary>
+                        <span>{root.name}</span>
+                        <small>{root.children.length} 个子领域</small>
+                      </summary>
+                      <div className="topic-tags">
+                        {root.children.map((discipline) => (
+                          <label className="chip selectable-chip" key={discipline.id}>
+                            <input
+                              checked={tag.disciplineIds.includes(discipline.id)}
+                              onChange={(event) => {
+                                const nextIds = event.currentTarget.checked
+                                  ? unique([...tag.disciplineIds, discipline.id])
+                                  : tag.disciplineIds.filter((id) => id !== discipline.id);
+                                updateDraftTag(tag.id, { disciplineIds: nextIds });
+                                if (event.currentTarget.checked) {
+                                  setSelectedDisciplineIds((current) => unique([...current, discipline.id]));
+                                }
+                              }}
+                              type="checkbox"
+                            />{" "}
+                            {discipline.name}
+                          </label>
+                        ))}
+                      </div>
+                    </details>
                   ))}
                 </div>
               </div>
