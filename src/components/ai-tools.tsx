@@ -14,9 +14,9 @@ const modeLabels: Record<AIChatMode, string> = {
 };
 
 const modePlaceholders: Record<AIChatMode, string> = {
-  ask: "输入不懂的术语、方法或背景问题。",
-  clarify: "写下你的直觉。输入 #2 后可选择引用具体回复。",
-  draft: "让 AI 根据上面的对话整理成可发布回复。"
+  ask: "输入不懂的术语、方法或背景问题。输入 #2 可引用具体回复。",
+  clarify: "写下你的直觉。输入 #2 可引用具体回复。",
+  draft: "让 AI 根据上面的对话整理成可发布回复。输入 #2 可引用具体回复。"
 };
 
 const pendingText: Record<AIChatMode, string> = {

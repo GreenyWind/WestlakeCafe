@@ -168,7 +168,10 @@ function conversationContext(messages: AIConversationMessage[] = []) {
     .slice(-10)
     .map((message, index) => {
       const speaker = message.role === "user" ? "用户" : "助手";
-      return `${index + 1}. ${speaker}: ${truncate(message.content, 500)}`;
+      const references = message.referencedReplyNumbers?.length
+        ? `（引用楼层：${message.referencedReplyNumbers.map((number) => `#${number}`).join("、")}）`
+        : "";
+      return `${index + 1}. ${speaker}${references}: ${truncate(message.content, 500)}`;
     })
     .join("\n");
 }
@@ -208,12 +211,15 @@ function chatPrompt(
         "Topic 主楼上下文如下：",
         topicMainPostContext(topic),
         "",
+        "用户引用的楼层如下：",
+        referenced.text,
+        "",
         "本页 AI 对话历史如下：",
         history,
         "",
         `用户最新问题：${input}`,
         "",
-        "请回答用户的问题，重点帮助跨领域或刚进入该领域的读者理解专业术语、方法名、研究背景和概念边界。"
+        "请回答用户的问题，重点帮助跨领域或刚进入该领域的读者理解专业术语、方法名、研究背景和概念边界。如用户引用了楼层，必须先结合被引用楼层的具体内容回答。"
       ].join("\n"),
       referencedReplyNumbers,
       warnings: referenced.warnings
@@ -246,9 +252,12 @@ function chatPrompt(
       "本页 AI 对话历史如下：",
       history,
       "",
+      "用户引用的楼层如下：",
+      referenced.text,
+      "",
       `用户最新要求：${input}`,
       "",
-      "请主要基于上述 AI 对话历史，生成一段可以发布到讨论区的中文回复。必要时参考下面的 topic 主楼以避免脱离语境：",
+      "请主要基于上述 AI 对话历史和用户引用楼层，生成一段可以发布到讨论区的中文回复。必要时参考下面的 topic 主楼以避免脱离语境：",
       topicMainPostContext(topic)
     ].join("\n"),
     referencedReplyNumbers,
