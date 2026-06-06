@@ -233,105 +233,105 @@ const childDisciplines = [
 const users = [
   {
     id: "user-demo",
-    name: "林亦辰",
+    name: "张一凡",
     email: "demo@university.edu",
     department: "计算机学院",
     researchField: "人机交互与科研工具"
   },
   {
     id: "user-bio",
-    name: "周安",
+    name: "李佳宁",
     email: "bio@university.edu",
     department: "生命科学学院",
     researchField: "神经科学"
   },
   {
     id: "user-med",
-    name: "陈墨",
+    name: "王思雨",
     email: "med@university.edu",
     department: "医学院",
     researchField: "医学影像"
   },
   {
     id: "user-ai-eng",
-    name: "沈知远",
+    name: "陈浩",
     email: "ai-eng@university.edu",
     department: "工学院",
     researchField: "AI for Science 与自主智能系统"
   },
   {
     id: "user-materials",
-    name: "许清予",
+    name: "刘子涵",
     email: "materials@university.edu",
     department: "工学院",
     researchField: "材料设计与表征"
   },
   {
     id: "user-electronic",
-    name: "陆南星",
+    name: "赵明轩",
     email: "electronic@university.edu",
     department: "工学院",
     researchField: "微纳光电与智能传感"
   },
   {
     id: "user-math",
-    name: "顾予衡",
+    name: "周雨桐",
     email: "math@university.edu",
     department: "理学院",
     researchField: "分析、几何与数学建模"
   },
   {
     id: "user-physics",
-    name: "闻景行",
+    name: "吴晨",
     email: "physics@university.edu",
     department: "理学院",
     researchField: "凝聚态物理与量子材料"
   },
   {
     id: "user-energy-chem",
-    name: "韩若澄",
+    name: "黄俊杰",
     email: "energy-chem@university.edu",
     department: "理学院",
     researchField: "人工光合作用与电催化"
   },
   {
     id: "user-structural-bio",
-    name: "叶知微",
+    name: "孙佳怡",
     email: "structural-bio@university.edu",
     department: "生命科学学院",
     researchField: "结构生物学与生物大分子机制"
   },
   {
     id: "user-neuro",
-    name: "宋临川",
+    name: "胡宇航",
     email: "neuro@university.edu",
     department: "生命科学学院",
     researchField: "神经环路与行为"
   },
   {
     id: "user-synbio",
-    name: "唐明澈",
+    name: "何思远",
     email: "synbio@university.edu",
     department: "生命科学学院",
     researchField: "系统与合成生物学"
   },
   {
     id: "user-trans-med",
-    name: "苏景宁",
+    name: "郑晓彤",
     email: "trans-med@university.edu",
     department: "医学院",
     researchField: "转化医学与临床试验"
   },
   {
     id: "user-immunology",
-    name: "梁澈",
+    name: "高雅雯",
     email: "immunology@university.edu",
     department: "医学院",
     researchField: "免疫学与炎症"
   },
   {
     id: "user-oncology",
-    name: "姚北辰",
+    name: "许文博",
     email: "oncology@university.edu",
     department: "医学院",
     researchField: "肿瘤生物学与治疗"

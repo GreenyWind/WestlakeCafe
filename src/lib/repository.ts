@@ -94,6 +94,13 @@ const FALLBACK_RECOMMENDATION_LABELS: Record<RecommendationSlotType, string> = {
   CROSS_FIELD: "跨界探索"
 };
 
+const DEMO_RECOMMENDATION_USER_NAMES = new Set(["Yuliang_Lee", "Yuliang Lee"]);
+const DEMO_RECOMMENDATION_USER_EMAILS = new Set(["fake_email@fakeaddr.com"]);
+const DEMO_RECOMMENDATION_TOPIC_IDS = [
+  "topic-computational-biology-perturbation",
+  "topic-quantum-sensing-biology"
+];
+
 function toDateString(value: Date | string) {
   return value instanceof Date ? value.toISOString() : value;
 }
@@ -655,6 +662,63 @@ function selectRecommendations(
   });
 }
 
+async function applyDemoRecommendationPins(user: PublicUser | null | undefined, topics: RecommendedTopic[]) {
+  const normalizedName = user?.name.replace(/\s+/g, "_");
+  const normalizedEmail = user?.email.toLowerCase();
+
+  if (
+    !user ||
+    !normalizedName ||
+    (!DEMO_RECOMMENDATION_USER_NAMES.has(user.name) &&
+      !DEMO_RECOMMENDATION_USER_NAMES.has(normalizedName) &&
+      (!normalizedEmail || !DEMO_RECOMMENDATION_USER_EMAILS.has(normalizedEmail)))
+  ) {
+    return topics;
+  }
+
+  const pinnedTopics = await prisma.topic.findMany({
+    where: {
+      id: { in: DEMO_RECOMMENDATION_TOPIC_IDS },
+      status: "PUBLISHED"
+    },
+    include: includeTopicRelations()
+  });
+  const pinnedTopicMap = new Map(pinnedTopics.map((topic) => [topic.id, topic as TopicWithRelations]));
+  const pinned = DEMO_RECOMMENDATION_TOPIC_IDS.flatMap((topicId, index) => {
+    const topic = pinnedTopicMap.get(topicId);
+
+    if (!topic) {
+      return [];
+    }
+
+    return [
+      toRecommendedTopic(topic, {
+        slotType: "CROSS_FIELD",
+        position: index,
+        score: Number.MAX_SAFE_INTEGER - index,
+        label: "跨界探索"
+      })
+    ];
+  });
+
+  if (!pinned.length) {
+    return topics;
+  }
+
+  const pinnedIds = new Set(pinned.map((topic) => topic.id));
+  const remaining = topics
+    .filter((topic) => !pinnedIds.has(topic.id))
+    .map((topic, index) => ({
+      ...topic,
+      recommendation: {
+        ...topic.recommendation,
+        position: pinned.length + index
+      }
+    }));
+
+  return [...pinned, ...remaining].slice(0, RECOMMENDATION_SLOTS.length);
+}
+
 async function uniqueTagSlug(name: string) {
   const base = slugify(name) || `tag-${Date.now()}`;
   let candidate = base;
@@ -1031,13 +1095,16 @@ export const repository = {
       ) {
         const labels = recommendationLabelsFor(profile);
 
-        return existing.items.map((item) =>
-          toRecommendedTopic(item.topic as TopicWithRelations, {
-            slotType: item.slotType as RecommendationSlotType,
-            position: item.position,
-            score: item.score,
-            label: labels[item.slotType as RecommendationSlotType]
-          })
+        return applyDemoRecommendationPins(
+          user,
+          existing.items.map((item) =>
+            toRecommendedTopic(item.topic as TopicWithRelations, {
+              slotType: item.slotType as RecommendationSlotType,
+              position: item.position,
+              score: item.score,
+              label: labels[item.slotType as RecommendationSlotType]
+            })
+          )
         );
       }
     }
@@ -1046,13 +1113,16 @@ export const repository = {
     const selected = selectRecommendations(candidates, profile, dateKey);
 
     if (!user) {
-      return selected.map((item) =>
-        toRecommendedTopic(item.topic as TopicWithRelations, {
-          slotType: item.slotType,
-          position: item.position,
-          score: item.score,
-          label: item.label
-        })
+      return applyDemoRecommendationPins(
+        user,
+        selected.map((item) =>
+          toRecommendedTopic(item.topic as TopicWithRelations, {
+            slotType: item.slotType,
+            position: item.position,
+            score: item.score,
+            label: item.label
+          })
+        )
       );
     }
 
@@ -1101,7 +1171,8 @@ export const repository = {
       });
     });
 
-    return (
+    return applyDemoRecommendationPins(
+      user,
       batch?.items.map((item) =>
         toRecommendedTopic(item.topic as TopicWithRelations, {
           slotType: item.slotType as RecommendationSlotType,

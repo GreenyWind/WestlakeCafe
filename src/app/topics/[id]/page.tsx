@@ -63,8 +63,8 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
 
   return (
     <main className="page">
-      <div className="layout-2">
-        <article className="panel stack">
+      <div className="layout-2 topic-split-layout">
+        <article className="panel stack topic-scroll-column">
           <header className="topic-detail-header">
             <div className="topic-meta">
               <span className="type-badge">{typeText[topic.type]}</span>
@@ -229,7 +229,7 @@ export default async function TopicDetailPage({ params }: { params: TopicParams 
           </section>
         </article>
 
-        <aside className="stack">
+        <aside className="stack topic-scroll-column topic-ai-column">
           <AITools
             topicId={topic.id}
             initialGuide={topic.aiGuide?.content}
