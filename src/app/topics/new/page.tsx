@@ -22,9 +22,9 @@ export default async function NewTopicPage() {
       <section className="section" style={{ marginTop: 12 }}>
         <div className="section-header">
           <div>
-            <p className="eyebrow">Create</p>
-            <h1 style={{ fontSize: 42, marginBottom: 10 }}>创建 topic</h1>
-            <p>清楚地抛出一个论文、问题或直觉，让不同领域的人知道如何加入。</p>
+            <p className="eyebrow page-eyebrow">Create</p>
+            <h1 className="page-title">创建 topic</h1>
+            <p className="page-subtitle">发起一场学术讨论。</p>
           </div>
           <Link className="button secondary" href="/topics">
             返回列表

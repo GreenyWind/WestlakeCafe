@@ -217,18 +217,17 @@ export function TopicForm({
     >
       {error ? <div className="error">{error}</div> : null}
       <div className="field">
-        <label htmlFor="title">讨论主题</label>
+        <label htmlFor="title">标题</label>
         <input
           className="input"
           id="title"
           name="title"
-          placeholder="例如：这篇论文的外部验证为什么这么难？"
           required
         />
       </div>
       <div className="grid grid-2">
         <div className="field">
-          <label htmlFor="type">topic 类型</label>
+          <label htmlFor="type">类型</label>
           <select className="select" id="type" name="type" defaultValue="QUESTION">
             <option value="PAPER">论文讨论</option>
             <option value="QUESTION">问题</option>
@@ -237,7 +236,7 @@ export function TopicForm({
           </select>
         </div>
         <div className="field">
-          <label>实际展示学科</label>
+          <label>学科归属</label>
           <div className="selection-summary">
             {visibleSelectedDisciplines.length > 0 || newDisciplines.length > 0 ? (
               <>
@@ -260,7 +259,7 @@ export function TopicForm({
                 ))}
               </>
             ) : (
-              <span className="muted">选择 tag 后会自动带出默认学科，也可以手动增删。</span>
+              <span className="muted">可手动调整</span>
             )}
           </div>
         </div>
@@ -271,23 +270,23 @@ export function TopicForm({
           className="textarea"
           id="body"
           name="body"
-          placeholder="写清楚你读到了什么、想问什么、希望哪些领域的人参与。"
+          placeholder="描述论文、问题或想法。"
           required
         />
       </div>
       <div className="grid grid-2">
         <div className="field">
-          <label htmlFor="paperTitle">论文标题，可选</label>
+          <label htmlFor="paperTitle">论文标题（可选）</label>
           <input className="input" id="paperTitle" name="paperTitle" />
         </div>
         <div className="field">
-          <label htmlFor="paperUrl">论文链接，可选</label>
+          <label htmlFor="paperUrl">论文链接（可选）</label>
           <input className="input" id="paperUrl" name="paperUrl" type="url" />
         </div>
       </div>
 
       <div className="field">
-        <label htmlFor="tagSearch">搜索已有 tag</label>
+        <label htmlFor="tagSearch">搜索 tag</label>
         <input
           className="input"
           id="tagSearch"
@@ -310,20 +309,19 @@ export function TopicForm({
                 </label>
               ))
             ) : (
-              <span className="muted">没有找到匹配的已审核 tag，可以在页面底部新建。</span>
+              <span className="muted">没有匹配的 tag。</span>
             )}
           </div>
         ) : null}
       </div>
 
       <div className="field">
-        <label>按学院和子领域选择 tag</label>
+        <label>选择 tag</label>
         <div className="taxonomy-browser">
           {rootDisciplines.map((root) => (
             <details className="taxonomy-root" key={root.id} open={root.children.some((discipline) => selectedDisciplineIds.includes(discipline.id))}>
               <summary>
                 <span>{root.name}</span>
-                <small>{root.children.length} 个子领域</small>
               </summary>
               <div className="taxonomy-children">
                 {splitColumns(root.children).map((column, columnIndex) => (
@@ -335,11 +333,10 @@ export function TopicForm({
                       return (
                         <details className={`taxonomy-child ${hasSelectedTag ? "selected" : ""}`} key={discipline.id}>
                           <summary className="taxonomy-child-summary">
-                            <span>
-                              {discipline.name}
-                            </span>
-                            <small>{disciplineTags.length} tags</small>
-                          </summary>
+                        <span>
+                          {discipline.name}
+                        </span>
+                      </summary>
                           {disciplineTags.length > 0 ? (
                             <div className="topic-tags">
                               {disciplineTags.map((tag) => (
@@ -367,12 +364,11 @@ export function TopicForm({
         </div>
         {selectedTags.length > 0 ? (
           <p className="field-help">
-            已选 tag 会自动建议学科归属：{" "}
+            学科归属：{" "}
             {unique(selectedTags.flatMap((tag) => tag.disciplineIds ?? []))
               .map((id) => disciplineNameById.get(id))
               .filter(Boolean)
               .join("、")}
-            。你可以在下面删掉不适合本 topic 的学科。
           </p>
         ) : null}
       </div>
@@ -393,7 +389,7 @@ export function TopicForm({
               </button>
             ))
           ) : (
-            <span className="muted">还没有选择 tag。</span>
+            <span className="muted">未选择 tag</span>
           )}
         </div>
       </div>
@@ -402,7 +398,7 @@ export function TopicForm({
         <div className="section-header compact">
           <div>
             <h3>找不到合适分类？</h3>
-            <p>可以在这里新建 tag，必要时同时新建子领域。新内容会标记为未审核，后续由管理员整理。</p>
+            <p>可以新建 tag。</p>
           </div>
           <button className="button secondary small" onClick={() => setDraftTags((current) => [...current, makeDraftTag()])} type="button">
             <Plus size={15} aria-hidden="true" />
@@ -410,7 +406,7 @@ export function TopicForm({
           </button>
         </div>
         {draftTags.length === 0 ? (
-          <div className="empty compact-empty">暂时没有新建 tag。</div>
+          <div className="empty compact-empty">暂未新建 tag</div>
         ) : (
           draftTags.map((tag) => (
             <div className="pending-tag-editor stack" key={tag.id}>
@@ -435,23 +431,22 @@ export function TopicForm({
                   />
                 </div>
                 <div className="field">
-                  <label>添加理由，可选</label>
+                  <label>理由（可选）</label>
                   <input
                     className="input"
                     onChange={(event) => updateDraftTag(tag.id, { reason: event.currentTarget.value })}
-                    placeholder="例如：比机器学习更适合本帖语境"
+                    placeholder="例如：没有细分领域"
                     value={tag.reason}
                   />
                 </div>
               </div>
               <div className="field">
-                <label>归属已有学科</label>
+                <label>选择学科</label>
                 <div className="taxonomy-browser compact">
                   {rootDisciplines.map((root) => (
                     <details className="taxonomy-root" key={root.id}>
                       <summary>
                         <span>{root.name}</span>
-                        <small>{root.children.length} 个子领域</small>
                       </summary>
                       <div className="topic-tags">
                         {root.children.map((discipline) => (
@@ -479,7 +474,7 @@ export function TopicForm({
               </div>
               <div className="field">
                 <div className="section-header compact">
-                  <label>如果学科也不存在，可以新建</label>
+                  <label>新建学科</label>
                   <button
                     className="button secondary small"
                     onClick={() =>

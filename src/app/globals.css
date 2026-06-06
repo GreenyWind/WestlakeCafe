@@ -263,6 +263,25 @@ h3 {
   line-height: 1.75;
 }
 
+.page-eyebrow {
+  margin-left: 2px;
+  margin-bottom: 4px;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.page-title {
+  margin-bottom: 8px;
+  font-size: 42px;
+}
+
+.page-subtitle {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.6;
+}
+
 .hero-panel {
   align-self: stretch;
   display: grid;
