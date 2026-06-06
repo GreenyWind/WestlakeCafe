@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { RecommendedTopic } from "@/lib/types";
 import { truncate } from "@/lib/utils";
 
-export function RecommendationDeck({ topics }: { topics: RecommendedTopic[] }) {
+export function RecommendationDeck({ topics, variant = "section" }: { topics: RecommendedTopic[]; variant?: "section" | "hero" }) {
   const deckRef = useRef<HTMLDivElement | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const count = topics.length;
@@ -54,7 +54,7 @@ export function RecommendationDeck({ topics }: { topics: RecommendedTopic[] }) {
 
   if (!activeTopic) {
     return (
-      <div className="recommendation-empty">
+      <div className={`recommendation-empty ${variant === "hero" ? "hero-recommendation-empty" : ""}`}>
         还没有足够的 topic 生成今日推荐。
       </div>
     );
@@ -63,7 +63,7 @@ export function RecommendationDeck({ topics }: { topics: RecommendedTopic[] }) {
   return (
     <div
       ref={deckRef}
-      className="recommendation-deck"
+      className={`recommendation-deck ${variant === "hero" ? "hero-recommendation-deck" : ""}`}
     >
       <button
         aria-label="上一张推荐"
@@ -76,6 +76,7 @@ export function RecommendationDeck({ topics }: { topics: RecommendedTopic[] }) {
 
       <Link className="recommendation-card" href={`/topics/${activeTopic.id}`}>
         <span className="deck-label">{activeTopic.recommendation.label}</span>
+        {variant === "hero" ? <span className="hero-feature-kicker">今日跨界探索</span> : null}
         <h3>{activeTopic.title}</h3>
         <p>{summary}</p>
         <div className="deck-meta">

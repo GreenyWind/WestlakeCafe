@@ -200,6 +200,11 @@ button {
   justify-content: flex-end;
 }
 
+.hero-actions {
+  justify-content: flex-start;
+  margin-top: 42px;
+}
+
 .page {
   width: min(1180px, 100%);
   margin: 0 auto;
@@ -209,17 +214,18 @@ button {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.7fr);
-  gap: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 34px;
   align-items: stretch;
-  padding: 22px 0 10px;
+  padding: 22px 0 12px;
 }
 
 .hero-copy {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  min-height: 260px;
+  justify-content: flex-start;
+  min-height: 430px;
+  padding: 58px 0 34px;
 }
 
 .eyebrow {
@@ -257,7 +263,7 @@ h3 {
 }
 
 .lead {
-  max-width: 720px;
+  max-width: 560px;
   color: var(--muted);
   font-size: 17px;
   line-height: 1.75;
@@ -282,34 +288,11 @@ h3 {
   line-height: 1.6;
 }
 
-.hero-panel {
-  align-self: stretch;
-  display: grid;
-  grid-template-rows: repeat(3, 1fr);
-  gap: 10px;
-  min-height: 260px;
-}
-
-.signal-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-}
-
-.signal-row svg {
-  color: var(--primary);
-  flex: 0 0 auto;
-}
-
-.signal-row span {
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.5;
+.hero-feature-kicker {
+  margin-bottom: -4px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 720;
 }
 
 .section {
@@ -472,6 +455,12 @@ h3 {
   overscroll-behavior: contain;
 }
 
+.hero-recommendation-deck {
+  height: 430px;
+  min-height: 430px;
+  padding: 22px 58px 50px;
+}
+
 .recommendation-card {
   width: min(660px, 100%);
   min-height: 220px;
@@ -486,6 +475,15 @@ h3 {
   background: #fff;
   box-shadow: 0 16px 38px rgba(31, 45, 37, 0.08);
   transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.hero-recommendation-deck .recommendation-card {
+  width: 100%;
+  height: 330px;
+  min-height: 330px;
+  gap: 9px;
+  justify-content: flex-start;
+  padding: 22px 32px;
 }
 
 .recommendation-card:hover {
@@ -516,6 +514,17 @@ h3 {
   word-break: break-word;
 }
 
+.hero-recommendation-deck .recommendation-card h3 {
+  display: -webkit-box;
+  min-height: 2.36em;
+  max-height: 2.36em;
+  overflow: hidden;
+  font-size: clamp(18px, 1.55vw, 22px);
+  line-height: 1.18;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .recommendation-card p {
   max-width: 620px;
   margin-bottom: 0;
@@ -524,12 +533,34 @@ h3 {
   line-height: 1.7;
 }
 
+.hero-recommendation-deck .recommendation-card p {
+  display: -webkit-box;
+  max-height: 6.4em;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.hero-recommendation-deck .deck-meta {
+  margin-top: auto;
+  max-height: 3.5em;
+  overflow: hidden;
+  line-height: 1.45;
+}
+
 .deck-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 14px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.deck-meta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .deck-arrow {
@@ -555,8 +586,16 @@ h3 {
   left: 22px;
 }
 
+.hero-recommendation-deck .deck-arrow-left {
+  left: 14px;
+}
+
 .deck-arrow-right {
   right: 22px;
+}
+
+.hero-recommendation-deck .deck-arrow-right {
+  right: 14px;
 }
 
 .deck-dots {
@@ -587,6 +626,10 @@ h3 {
   background: var(--surface);
   color: var(--muted);
   text-align: center;
+}
+
+.hero-recommendation-empty {
+  min-height: 350px;
 }
 
 .topic-tags {
@@ -1296,9 +1339,19 @@ select:focus {
     padding: 14px 14px 54px;
   }
 
+  .hero-recommendation-deck {
+    height: 380px;
+    min-height: 380px;
+  }
+
   .recommendation-card {
     min-height: 240px;
     padding: 24px 20px;
+  }
+
+  .hero-recommendation-deck .recommendation-card {
+    height: 282px;
+    min-height: 282px;
   }
 
   .deck-arrow {

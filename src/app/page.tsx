@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Bot, Compass, MessagesSquare } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { RecommendationDeck } from "@/components/recommendation-deck";
 import { repository } from "@/lib/repository";
 import { getCurrentUser } from "@/lib/session";
@@ -18,9 +18,9 @@ export default async function HomePage() {
           <p className="eyebrow">校内跨领域学术讨论</p>
           <h1>WestlakeCafe</h1>
           <p className="lead">
-            以 topic 为单位组织论文、问题和研究直觉，让博士生能更低成本地进入陌生领域的讨论。
+            按 topic 发起论文、问题和想法讨论。
           </p>
-          <div className="nav-actions" style={{ justifyContent: "flex-start", marginTop: 12 }}>
+          <div className="nav-actions hero-actions">
             <Link className="button" href="/topics">
               浏览 topics
               <ArrowRight size={16} aria-hidden="true" />
@@ -30,32 +30,7 @@ export default async function HomePage() {
             </Link>
           </div>
         </div>
-        <div className="hero-panel" aria-label="核心能力">
-          <div className="signal-row">
-            <Compass size={22} aria-hidden="true" />
-            <div>
-              <strong>按学科进入</strong>
-              <br />
-              <span>从学院到子学科，再进入具体 topic。</span>
-            </div>
-          </div>
-          <div className="signal-row">
-            <Bot size={22} aria-hidden="true" />
-            <div>
-              <strong>AI 降低门槛</strong>
-              <br />
-              <span>导读、问答和发言整理帮助外领域读者进入讨论。</span>
-            </div>
-          </div>
-          <div className="signal-row">
-            <MessagesSquare size={22} aria-hidden="true" />
-            <div>
-              <strong>今日跨界探索</strong>
-              <br />
-              <span>每日生成一组推荐，用滑动方式遇见熟悉和陌生 topic。</span>
-            </div>
-          </div>
-        </div>
+        <RecommendationDeck topics={recommendedTopics} variant="hero" />
       </section>
 
       <section className="section">
