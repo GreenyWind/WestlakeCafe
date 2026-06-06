@@ -337,6 +337,10 @@ h3 {
   color: var(--muted);
 }
 
+.back-link {
+  margin-bottom: 18px;
+}
+
 .grid {
   display: grid;
   gap: 14px;
@@ -656,6 +660,54 @@ h3 {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.tag-filter-panel {
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.tag-filter-panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 10px 13px;
+  color: var(--foreground);
+  cursor: pointer;
+  font-weight: 680;
+  list-style: none;
+}
+
+.tag-filter-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.tag-filter-panel summary::after {
+  content: "+";
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--primary-dark);
+  font-weight: 760;
+}
+
+.tag-filter-panel[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.tag-filter-panel[open] summary::after {
+  content: "-";
+}
+
+.tag-filter-panel .topic-tags {
+  padding: 12px;
 }
 
 .button {

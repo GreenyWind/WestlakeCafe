@@ -71,7 +71,7 @@ type UserRecommendationProfile = {
   hasBehavior: boolean;
 };
 
-const RECOMMENDATION_ALGORITHM_VERSION = "daily-deck-v1";
+const RECOMMENDATION_ALGORITHM_VERSION = "daily-deck-v2";
 const RECOMMENDATION_SLOTS: RecommendationSlotType[] = [
   "FAMILIAR",
   "FAMILIAR",
@@ -384,8 +384,8 @@ function recommendationDistance(topic: RecommendationCandidate, profile: UserRec
 function slotMatchScore(slotType: RecommendationSlotType, distance: 0 | 1 | 2) {
   const table: Record<RecommendationSlotType, Record<0 | 1 | 2, number>> = {
     FAMILIAR: { 0: 30, 1: 16, 2: 4 },
-    ADJACENT: { 0: 10, 1: 30, 2: 14 },
-    CROSS_FIELD: { 0: 2, 1: 14, 2: 30 }
+    ADJACENT: { 0: Number.NEGATIVE_INFINITY, 1: 30, 2: Number.NEGATIVE_INFINITY },
+    CROSS_FIELD: { 0: Number.NEGATIVE_INFINITY, 1: 10, 2: 30 }
   };
 
   return table[slotType][distance];

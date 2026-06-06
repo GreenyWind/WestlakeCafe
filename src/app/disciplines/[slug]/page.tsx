@@ -21,6 +21,9 @@ export default async function DisciplinePage({ params }: { params: DisciplinePar
     disciplines.find((item) => item.id === discipline.id)?.children ??
     disciplines.flatMap((item) => item.children).filter((item) => item.parentId === discipline.id);
   const isRoot = !discipline.parentId;
+  const parentDiscipline = isRoot
+    ? null
+    : disciplines.find((item) => item.id === discipline.parentId) ?? null;
   const tagsByDiscipline = new Map<string, typeof tags>();
 
   for (const tag of tags) {
@@ -39,6 +42,11 @@ export default async function DisciplinePage({ params }: { params: DisciplinePar
   return (
     <main className="page">
       <section className="section" style={{ marginTop: 12 }}>
+        {!isRoot && parentDiscipline ? (
+          <Link className="button ghost small back-link" href={`/disciplines/${parentDiscipline.slug}`}>
+            ← 返回 {parentDiscipline.name}
+          </Link>
+        ) : null}
         <p className="eyebrow">{isRoot ? "学院" : "子学科"}</p>
         <h1 style={{ fontSize: 42, marginBottom: 10 }}>{discipline.name}</h1>
         <p className="lead">
@@ -88,9 +96,6 @@ export default async function DisciplinePage({ params }: { params: DisciplinePar
                 <h2>相关 topics</h2>
                 <p>{topics.length} 个 topic。</p>
               </div>
-              <Link className="button secondary" href={`/topics?discipline=${discipline.slug}`}>
-                列表视图
-              </Link>
             </div>
             {topics.length > 0 ? (
               <div className="grid grid-2">

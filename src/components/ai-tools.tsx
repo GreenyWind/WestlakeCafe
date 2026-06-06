@@ -296,13 +296,19 @@ export function AITools({
     );
   }
 
+  function togglePanelWidth() {
+    const nextExpanded = !expanded;
+    setExpanded(nextExpanded);
+    setGuideExpanded(nextExpanded);
+  }
+
   return (
     <div className={`ai-tools ${expanded ? "expanded" : ""}`}>
       <div className="stack">
         <button
           className="button secondary"
           type="button"
-          onClick={() => setExpanded((value) => !value)}
+          onClick={togglePanelWidth}
         >
           {expanded ? <Minimize2 size={16} aria-hidden="true" /> : <Expand size={16} aria-hidden="true" />}
           {expanded ? "恢复窄栏" : "展开 AI 面板"}

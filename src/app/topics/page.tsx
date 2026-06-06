@@ -87,16 +87,19 @@ export default async function TopicsPage({
           </button>
         </form>
 
-        <div className="topic-tags" style={{ marginBottom: 18 }}>
-          <Link className="tag" href="/topics">
-            全部 tag
-          </Link>
-          {tags.map((tag) => (
-            <Link className="tag" href={`/topics?tag=${tag.slug}`} key={tag.id}>
-              {tag.name}
+        <details className="tag-filter-panel">
+          <summary>按 tag 筛选</summary>
+          <div className="topic-tags">
+            <Link className="tag" href="/topics">
+              全部 tag
             </Link>
-          ))}
-        </div>
+            {tags.map((tag) => (
+              <Link className="tag" href={`/topics?tag=${tag.slug}`} key={tag.id}>
+                {tag.name}
+              </Link>
+            ))}
+          </div>
+        </details>
 
         {topics.length > 0 ? (
           <div className="grid grid-2">

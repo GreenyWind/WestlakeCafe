@@ -1,22 +1,23 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 
 export function LoginForm({ nextPath = "/" }: { nextPath?: string }) {
   const router = useRouter();
   const [error, setError] = useState("");
-  const [pending, startTransition] = useTransition();
+  const [submitting, setSubmitting] = useState(false);
 
   return (
     <form
       className="form-panel stack"
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault();
         setError("");
+        setSubmitting(true);
         const form = new FormData(event.currentTarget);
 
-        startTransition(async () => {
+        try {
           const response = await fetch("/api/auth/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -28,12 +29,16 @@ export function LoginForm({ nextPath = "/" }: { nextPath?: string }) {
 
           if (!response.ok) {
             setError("邮箱或密码不正确。示例账号：demo@university.edu / demo1234");
+            setSubmitting(false);
             return;
           }
 
           router.push(nextPath);
           router.refresh();
-        });
+        } catch {
+          setError("登录失败，请稍后再试。");
+          setSubmitting(false);
+        }
       }}
     >
       <div>
@@ -63,8 +68,8 @@ export function LoginForm({ nextPath = "/" }: { nextPath?: string }) {
           required
         />
       </div>
-      <button className="button" disabled={pending} type="submit">
-        {pending ? "登录中" : "登录"}
+      <button className="button" disabled={submitting} type="submit">
+        {submitting ? "登录中" : "登录"}
       </button>
     </form>
   );
