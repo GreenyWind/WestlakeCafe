@@ -30,7 +30,13 @@ export default async function HomePage() {
             </Link>
           </div>
         </div>
-        <RecommendationDeck topics={recommendedTopics} variant="hero" />
+        <section className="hero-recommendation">
+          <div className="hero-recommendation-heading">
+            <p className="eyebrow">今日跨界探索</p>
+            <span>滚动切换推荐 topic。</span>
+          </div>
+          <RecommendationDeck topics={recommendedTopics} variant="hero" />
+        </section>
       </section>
 
       <section className="section">
@@ -60,19 +66,6 @@ export default async function HomePage() {
             </Link>
           ))}
         </div>
-      </section>
-
-      <section className="section">
-        <div className="section-header">
-          <div>
-            <h2>今日跨界探索</h2>
-            <p>滚动切换推荐 topic。</p>
-          </div>
-          <Link className="button secondary" href="/topics">
-            全部 topics
-          </Link>
-        </div>
-        <RecommendationDeck topics={recommendedTopics} />
       </section>
     </main>
   );

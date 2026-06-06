@@ -17,7 +17,7 @@ export function RecommendationDeck({ topics, variant = "section" }: { topics: Re
       return "";
     }
 
-    return activeTopic.aiGuide?.oneLineSummary || activeTopic.paperTitle || truncate(activeTopic.body, 96);
+    return activeTopic.aiGuide?.oneLineSummary || truncate(activeTopic.body, 120);
   }, [activeTopic]);
 
   function move(delta: number) {
@@ -76,7 +76,6 @@ export function RecommendationDeck({ topics, variant = "section" }: { topics: Re
 
       <Link className="recommendation-card" href={`/topics/${activeTopic.id}`}>
         <span className="deck-label">{activeTopic.recommendation.label}</span>
-        {variant === "hero" ? <span className="hero-feature-kicker">今日跨界探索</span> : null}
         <h3>{activeTopic.title}</h3>
         <p>{summary}</p>
         <div className="deck-meta">

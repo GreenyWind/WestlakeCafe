@@ -288,11 +288,29 @@ h3 {
   line-height: 1.6;
 }
 
-.hero-feature-kicker {
-  margin-bottom: -4px;
-  color: var(--accent);
+.hero-recommendation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 58px;
+}
+
+.hero-recommendation-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hero-recommendation-heading .eyebrow {
+  margin-bottom: 0;
   font-size: 13px;
   font-weight: 720;
+}
+
+.hero-recommendation-heading span {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .section {
@@ -456,8 +474,8 @@ h3 {
 }
 
 .hero-recommendation-deck {
-  height: 430px;
-  min-height: 430px;
+  height: 404px;
+  min-height: 404px;
   padding: 22px 58px 50px;
 }
 
@@ -1332,6 +1350,12 @@ select:focus {
 
   .nav-actions {
     justify-content: flex-start;
+  }
+
+  .hero-recommendation-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .recommendation-deck {
