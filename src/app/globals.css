@@ -344,8 +344,8 @@ h3 {
 .discipline-card {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  min-height: 170px;
+  gap: 18px;
+  min-height: 180px;
   padding: 18px;
 }
 

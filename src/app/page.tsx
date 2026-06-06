@@ -15,10 +15,10 @@ export default async function HomePage() {
     <main className="page">
       <section className="hero">
         <div className="hero-copy">
-          <p className="eyebrow">校内跨领域学术讨论</p>
+          <p className="eyebrow">你的线上元宇宙</p>
           <h1>WestlakeCafe</h1>
           <p className="lead">
-            按 topic 发起论文、问题和想法讨论。
+            把想聊的研究带到这里。
           </p>
           <div className="nav-actions hero-actions">
             <Link className="button" href="/topics">
@@ -36,8 +36,8 @@ export default async function HomePage() {
       <section className="section">
         <div className="section-header">
           <div>
-            <h2>学科入口</h2>
-            <p>先从熟悉或陌生的学院进入。</p>
+            <h2>学院入口</h2>
+            <p>进入学院和子学科。</p>
           </div>
         </div>
         <div className="grid grid-2">
@@ -49,7 +49,6 @@ export default async function HomePage() {
             >
               <div>
                 <h3>{discipline.name}</h3>
-                <p className="muted">查看该大类下的子学科和相关 topics。</p>
               </div>
               <div className="subdiscipline-list">
                 {discipline.children.map((child) => (
@@ -67,10 +66,10 @@ export default async function HomePage() {
         <div className="section-header">
           <div>
             <h2>今日跨界探索</h2>
-            <p>滚动卡片，在熟悉入口、相邻领域和跨界探索之间切换。</p>
+            <p>滚动切换推荐 topic。</p>
           </div>
           <Link className="button secondary" href="/topics">
-            查看全部
+            全部 topics
           </Link>
         </div>
         <RecommendationDeck topics={recommendedTopics} />

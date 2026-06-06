@@ -21,12 +21,12 @@ export default async function UnclassifiedDisciplinePage({ params }: { params: U
       <section className="section" style={{ marginTop: 12 }}>
         <div className="section-header">
           <div>
-            <p className="eyebrow">Unclassified</p>
+            <p className="eyebrow">未分类</p>
             <h1 style={{ fontSize: 42, marginBottom: 10 }}>{discipline.name} · 未分类</h1>
-            <p>这些 topic 使用了用户新建、尚未审核进入正式学科树的子学科。</p>
+            <p>用户新建的子学科。</p>
           </div>
           <Link className="button secondary" href={`/disciplines/${discipline.slug}`}>
-            返回子学科
+            返回
           </Link>
         </div>
 

@@ -7,9 +7,10 @@ type DisciplineParams = Promise<{ slug: string }>;
 
 export default async function DisciplinePage({ params }: { params: DisciplineParams }) {
   const { slug } = await params;
-  const [discipline, disciplines] = await Promise.all([
+  const [discipline, disciplines, tags] = await Promise.all([
     repository.getDisciplineBySlug(slug),
-    repository.listDisciplines()
+    repository.listDisciplines(),
+    repository.listTags()
   ]);
 
   if (!discipline) {
@@ -20,6 +21,16 @@ export default async function DisciplinePage({ params }: { params: DisciplinePar
     disciplines.find((item) => item.id === discipline.id)?.children ??
     disciplines.flatMap((item) => item.children).filter((item) => item.parentId === discipline.id);
   const isRoot = !discipline.parentId;
+  const tagsByDiscipline = new Map<string, typeof tags>();
+
+  for (const tag of tags) {
+    for (const disciplineId of tag.disciplineIds ?? []) {
+      const current = tagsByDiscipline.get(disciplineId) ?? [];
+      current.push(tag);
+      tagsByDiscipline.set(disciplineId, current);
+    }
+  }
+
   const [topics, unclassifiedCount] = await Promise.all([
     isRoot ? Promise.resolve([]) : repository.listTopics({ disciplineSlug: slug }),
     isRoot ? repository.countUnclassifiedTopics(slug) : Promise.resolve(0)
@@ -28,10 +39,10 @@ export default async function DisciplinePage({ params }: { params: DisciplinePar
   return (
     <main className="page">
       <section className="section" style={{ marginTop: 12 }}>
-        <p className="eyebrow">Discipline</p>
+        <p className="eyebrow">{isRoot ? "学院" : "子学科"}</p>
         <h1 style={{ fontSize: 42, marginBottom: 10 }}>{discipline.name}</h1>
         <p className="lead">
-          {isRoot ? "先选择更具体的子学科，再进入 topic。" : "从这个学科入口进入相关 topic。"}
+          {isRoot ? "选择子学科。" : "浏览相关 topic。"}
         </p>
 
         {isRoot ? (
@@ -40,16 +51,30 @@ export default async function DisciplinePage({ params }: { params: DisciplinePar
               <h2>子学科</h2>
             </div>
             <div className="grid grid-3">
-              {children.map((child) => (
-                <Link className="discipline-card" href={`/disciplines/${child.slug}`} key={child.id}>
-                  <h3>{child.name}</h3>
-                  <p className="muted">查看 {child.name} 相关讨论。</p>
-                </Link>
-              ))}
+              {children.map((child) => {
+                const previewTags = (tagsByDiscipline.get(child.id) ?? []).slice(0, 5);
+
+                return (
+                  <Link className="discipline-card" href={`/disciplines/${child.slug}`} key={child.id}>
+                    <h3>{child.name}</h3>
+                    {previewTags.length > 0 ? (
+                      <div className="subdiscipline-list">
+                        {previewTags.map((tag) => (
+                          <span className="chip" key={tag.id}>
+                            {tag.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="muted">暂无 tag</p>
+                    )}
+                  </Link>
+                );
+              })}
               <Link className="discipline-card" href={`/disciplines/${discipline.slug}/unclassified`}>
                 <h3>未分类</h3>
                 <p className="muted">
-                  查看用户新建、尚未审核进正式学科树的讨论。{unclassifiedCount ? `当前有 ${unclassifiedCount} 个。` : ""}
+                  用户新建的子学科。{unclassifiedCount ? `${unclassifiedCount} 个 topic。` : ""}
                 </p>
               </Link>
             </div>
@@ -61,10 +86,10 @@ export default async function DisciplinePage({ params }: { params: DisciplinePar
             <div className="section-header">
               <div>
                 <h2>相关 topics</h2>
-                <p>{topics.length} 个讨论正在或曾经发生。</p>
+                <p>{topics.length} 个 topic。</p>
               </div>
               <Link className="button secondary" href={`/topics?discipline=${discipline.slug}`}>
-                在列表中筛选
+                列表视图
               </Link>
             </div>
             {topics.length > 0 ? (
