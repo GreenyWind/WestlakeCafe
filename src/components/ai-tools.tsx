@@ -1,7 +1,8 @@
 "use client";
 
 import { Bot, Expand, FileText, MessageCircle, Minimize2, Send } from "lucide-react";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { MarkdownContent } from "@/components/markdown-content";
 import type { AIChatMode, AIConversationMessage } from "@/lib/types";
 
 type GuideStatus = "EMPTY" | "PENDING" | "COMPLETED" | "FAILED";
@@ -44,6 +45,7 @@ export function AITools({
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<AIConversationMessage[]>([]);
   const [selectedReplyReferences, setSelectedReplyReferences] = useState<number[]>([]);
+  const selectedReplyReferencesRef = useRef<number[]>([]);
   const [lastDraft, setLastDraft] = useState("");
   const [chatWarnings, setChatWarnings] = useState<string[]>([]);
   const [error, setError] = useState("");
@@ -60,11 +62,15 @@ export function AITools({
   }, [input, selectedReplyReferences]);
 
   function addReplyReference(floor: number) {
-    setSelectedReplyReferences((current) => Array.from(new Set([...current, floor])).sort((a, b) => a - b));
+    const next = Array.from(new Set([...selectedReplyReferencesRef.current, floor])).sort((a, b) => a - b);
+    selectedReplyReferencesRef.current = next;
+    setSelectedReplyReferences(next);
   }
 
   function removeReplyReference(floor: number) {
-    setSelectedReplyReferences((current) => current.filter((item) => item !== floor));
+    const next = selectedReplyReferencesRef.current.filter((item) => item !== floor);
+    selectedReplyReferencesRef.current = next;
+    setSelectedReplyReferences(next);
   }
 
   function runAI<T>(action: PendingAction, task: () => Promise<T>) {
@@ -222,18 +228,22 @@ export function AITools({
   }, [topicId, initialGuide, initialGuideStatus]);
 
   function sendChat() {
+    const currentMode = mode;
     const trimmed = input.trim();
 
-    if (!trimmed && (mode !== "draft" || !messages.length)) {
+    if (!trimmed && (currentMode !== "draft" || !messages.length)) {
       return;
     }
 
     const history = messages;
     const outbound = trimmed || "请根据前面的讨论生成可发布回复。";
-    const currentReplyReferences = selectedReplyReferences;
+    const currentReplyReferences = Array.from(
+      new Set([...selectedReplyReferencesRef.current, ...selectedReplyReferences])
+    ).sort((a, b) => a - b);
     const userMessage = { role: "user" as const, content: outbound, referencedReplyNumbers: currentReplyReferences };
     const assistantPlaceholder = { role: "assistant" as const, content: "" };
     setInput("");
+    selectedReplyReferencesRef.current = [];
     setSelectedReplyReferences([]);
     setMessages([...history, userMessage, assistantPlaceholder]);
     setChatWarnings([]);
@@ -245,7 +255,7 @@ export function AITools({
         await postStream(
           `/api/ai/topics/${topicId}/chat`,
           {
-            mode,
+            mode: currentMode,
             message: outbound,
             messages: history,
             referencedReplyNumbers: currentReplyReferences,
@@ -253,7 +263,17 @@ export function AITools({
           },
           {
             onMeta(data) {
-              const value = data as { warnings?: unknown };
+              const value = data as { referencedReplyNumbers?: unknown; warnings?: unknown };
+              if (Array.isArray(value.referencedReplyNumbers)) {
+                const normalizedReferences = value.referencedReplyNumbers
+                  .map((item) => Number(item))
+                  .filter((item) => Number.isInteger(item) && item > 0);
+                setMessages([
+                  ...history,
+                  { ...userMessage, referencedReplyNumbers: normalizedReferences },
+                  { role: "assistant" as const, content: assistantText }
+                ]);
+              }
               setChatWarnings(Array.isArray(value.warnings) ? value.warnings.map(String) : []);
             },
             onDelta(delta) {
@@ -275,7 +295,7 @@ export function AITools({
         throw new Error("AI 没有返回内容，请稍后再试。");
       }
 
-      if (mode === "draft") {
+      if (currentMode === "draft") {
         setLastDraft(assistantText);
       }
     });
@@ -323,7 +343,9 @@ export function AITools({
             <p className="body-text muted">正在阅读 topic 并生成概览...</p>
           ) : guide ? (
             <>
-              <p className={`body-text ai-guide-content ${guideExpanded ? "expanded" : ""}`}>{guide}</p>
+              <MarkdownContent className={`ai-guide-content ${guideExpanded ? "expanded" : ""}`}>
+                {guide}
+              </MarkdownContent>
               <button
                 className="button ghost small"
                 type="button"
@@ -370,9 +392,13 @@ export function AITools({
                       ))}
                     </div>
                   ) : null}
-                  <p className={`body-text ${message.content ? "" : "muted"}`}>
-                    {message.content || (pendingAction === "chat" ? pendingText[mode] : "AI 没有返回内容。")}
-                  </p>
+                  {message.content ? (
+                    <MarkdownContent>{message.content}</MarkdownContent>
+                  ) : (
+                    <p className="body-text muted">
+                      {pendingAction === "chat" ? pendingText[mode] : "AI 没有返回内容。"}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

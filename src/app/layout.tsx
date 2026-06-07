@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Coffee } from "lucide-react";
+import "katex/dist/katex.min.css";
 import "@/app/globals.css";
 import { AuthNav } from "@/components/auth-nav";
 import { SiteSearch } from "@/components/site-search";

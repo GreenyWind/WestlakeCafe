@@ -159,7 +159,7 @@ function referencedRepliesContext(topic: TopicDetail, numbers: number[]) {
   };
 }
 
-function conversationContext(messages: AIConversationMessage[] = []) {
+function conversationContext(messages: AIConversationMessage[] = [], topic?: TopicDetail) {
   if (!messages.length) {
     return "暂无历史对话";
   }
@@ -171,7 +171,11 @@ function conversationContext(messages: AIConversationMessage[] = []) {
       const references = message.referencedReplyNumbers?.length
         ? `（引用楼层：${message.referencedReplyNumbers.map((number) => `#${number}`).join("、")}）`
         : "";
-      return `${index + 1}. ${speaker}${references}: ${truncate(message.content, 500)}`;
+      const referencedContent =
+        topic && message.referencedReplyNumbers?.length
+          ? `\n   当时引用内容：${referencedRepliesContext(topic, message.referencedReplyNumbers).text}`
+          : "";
+      return `${index + 1}. ${speaker}${references}: ${truncate(message.content, 500)}${referencedContent}`;
     })
     .join("\n");
 }
@@ -182,7 +186,7 @@ function questionContext(topic: TopicDetail, messages: AIConversationMessage[], 
     topicContext(topic),
     "",
     "本页已有对话历史如下：",
-    conversationContext(messages),
+    conversationContext(messages, topic),
     "",
     `用户最新问题：${question}`,
     "",
@@ -203,7 +207,7 @@ function chatPrompt(
 ) {
   const referencedReplyNumbers = uniqueNumbers([...parseReplyReferences(input), ...explicitReplyReferences]);
   const referenced = referencedRepliesContext(topic, referencedReplyNumbers);
-  const history = conversationContext(messages);
+  const history = conversationContext(messages, topic);
 
   if (mode === "ask") {
     return {
@@ -240,7 +244,13 @@ function chatPrompt(
         "",
         `用户最新想法：${input}`,
         "",
-        "请帮助用户澄清想法。不要直接生成最终回复。"
+        [
+          "请帮助用户澄清想法。不要直接生成最终回复。",
+          "请按以下结构回答：",
+          "一、我理解你的核心点：用 1-2 句概括用户真正想说什么。",
+          "二、这个判断可以怎么更准确：说明用户判断中成立的部分，并给出必要限定；如果涉及指标，请先把分子、分母和抽样对象说清楚。",
+          "三、还差哪一个关键前提：最多给 1-2 个真正会改变结论的问题。不要泛泛列出多个评价维度。"
+        ].join("\n")
       ].join("\n"),
       referencedReplyNumbers,
       warnings: referenced.warnings
@@ -271,7 +281,7 @@ function draftingContext(topic: TopicDetail, messages: AIConversationMessage[], 
     topicContext(topic),
     "",
     "用户与助手关于如何发言的已有讨论如下：",
-    conversationContext(messages),
+    conversationContext(messages, topic),
     "",
     `用户最新补充：${input}`,
     ""
@@ -867,7 +877,16 @@ function systemQuestionPrompt() {
 }
 
 function systemClarifyPrompt() {
-  return "你是帮助博士生澄清发言思路的学术讨论伙伴。请基于主楼和用户引用的楼层理解讨论语境，先复述用户想表达的直觉，再指出其中需要澄清的概念、假设、证据或对象，最后提出 2-3 个具体追问，帮助用户把想法收束成可讨论的问题。用中文回答。";
+  return [
+    "你是帮助博士生澄清发言思路的学术讨论伙伴。你的目标不是挑刺，而是把用户已有的直觉变成更清楚、更可讨论的观点。",
+    "请基于主楼、用户引用的楼层和对话历史理解语境。先判断用户的核心判断是否基本成立；如果成立，请明确说出来，并帮用户补上更准确的术语、条件或论证结构。只有当确实影响结论时，才指出关键漏洞。",
+    "回答风格要求：",
+    "1. 先用 1-2 句说清楚用户真正想表达的观点，不要机械复述。",
+    "2. 接着给出你的判断：哪些地方是对的，哪些地方需要限定。优先区分“评价指标是什么”和“它不能评价什么”，不要泛泛罗列所有可能指标。",
+    "3. 如果需要追问，最多提出 1-2 个关键问题；不要为了显得全面而提出一串审稿式问题。",
+    "4. 语气要像同伴讨论，可以顺着用户往前推一步；不要为了平衡而反对。不要直接生成最终回复。",
+    "用中文回答。"
+  ].join("\n");
 }
 
 function systemDraftPrompt() {
